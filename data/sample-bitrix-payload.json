@@ -1,0 +1,81 @@
+{
+  "source": "bitrix24",
+  "syncId": "sync-test-001",
+  "syncedAt": "2026-05-19T15:30:00+03:00",
+  "mode": "full",
+  "projects": [
+    {
+      "projectId": "124554",
+      "projectName": "Разработать ИИ приложение по оценке проектной деятельности",
+      "projectUrl": "https://b.it-d.ge/company/personal/user/1301/tasks/task/view/124554/",
+      "stage": "Ждёт выполнения",
+      "status": "active",
+      "owner": "Екатерина Середа",
+      "executor": "Дмитрий Колесниченко",
+      "createdAt": "2026-05-05T15:09:00+03:00",
+      "deadlineAt": "2026-05-29T23:30:00+03:00",
+      "lastPcDate": "2026-05-10T00:00:00Z",
+      "monitoringFrequencyWeeks": 1,
+      "tasks": [
+        {
+          "taskId": "125193",
+          "title": "Подготовить методологию оценки эффективности проектов",
+          "status": "Завершена",
+          "executor": "Екатерина Середа",
+          "deadlineAt": "2026-05-15T23:30:00+03:00",
+          "completedAt": "2026-05-15T13:46:00+03:00",
+          "quarter": "2026-Q2",
+          "weight": 10,
+          "progressPercent": 100,
+          "isMilestone": true
+        },
+        {
+          "taskId": "124566",
+          "title": "Настройка API",
+          "status": "Выполняется",
+          "executor": "Елена Волосевич",
+          "deadlineAt": "2026-05-22T23:30:00+03:00",
+          "quarter": "2026-Q2",
+          "weight": 20,
+          "progressPercent": 50,
+          "isMilestone": true
+        }
+      ],
+      "milestones": [],
+      "indicators": [
+        {
+          "indicatorId": "ind-1",
+          "name": "Кол-во расчетных метрик",
+          "planValue": 10,
+          "factValue": 4,
+          "unit": "ед."
+        }
+      ],
+      "risks": [
+        {
+          "riskId": "risk-1",
+          "title": "Задержка API OpenAI",
+          "severity": "medium",
+          "recommendation": "Использовать кеширование"
+        }
+      ]
+    },
+    {
+      "projectId": "100200",
+      "projectName": "Ребрендинг корпоративного портала",
+      "status": "overdue",
+      "executor": "Иван Иванов",
+      "createdAt": "2026-04-01T10:00:00Z",
+      "deadlineAt": "2026-05-01T18:00:00Z",
+      "tasks": [
+        {
+          "taskId": "t1",
+          "title": "Задизайнить логотип",
+          "status": "Просрочена",
+          "weight": 50
+        }
+      ],
+      "indicators": []
+    }
+  ]
+}

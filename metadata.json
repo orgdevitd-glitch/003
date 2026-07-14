@@ -1,0 +1,8 @@
+{
+  "name": "Dashboard (15.06.2026)",
+  "description": "Dashboard по оценке проектов и их ведения с оценкой рисков в режиме реального времени.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_OPENAI_API"
+  ]
+}

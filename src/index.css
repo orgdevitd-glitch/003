@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply text-base antialiased font-sans;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-gray-50 rounded-full;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full hover:bg-gray-400;
+  }
+
+  /* Custom Clean Animations and Micro-interactions */
+  .animate-soft-enter {
+    animation: softEnter 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-delay-75 {
+    animation-delay: 75ms;
+  }
+  .animate-delay-150 {
+    animation-delay: 150ms;
+  }
+  .animate-delay-225 {
+    animation-delay: 225ms;
+  }
+  .animate-delay-300 {
+    animation-delay: 300ms;
+  }
+
+  @keyframes softEnter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .transition-soft {
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .interactive-card {
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), 
+                box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1), 
+                border-color 220ms cubic-bezier(0.16, 1, 0.3, 1),
+                background-color 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .interactive-card:hover {
+    transform: translateY(-1.5px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+    @apply border-gray-300;
+  }
+
+  .interactive-button {
+    transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .interactive-button:hover {
+    transform: translateY(-1px);
+  }
+  .interactive-button:active {
+    transform: translateY(0.5px);
+  }
+
+  .gauge-path {
+    transition: stroke-dashoffset 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Modal animation overlay and content styling */
+  .animate-modal-overlay-fade {
+    animation: overlayFadeIn 200ms ease-out forwards;
+  }
+
+  .animate-modal-content-zoom {
+    animation: contentZoomIn 230ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes overlayFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes contentZoomIn {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-quarter-transition {
+    animation: quarterChange 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes quarterChange {
+    from {
+      opacity: 0.65;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-soft-enter, .animate-quarter-transition {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+    .animate-delay-75, .animate-delay-150, .animate-delay-225, .animate-delay-300 {
+      animation-delay: 0ms !important;
+    }
+    .animate-modal-overlay-fade, .animate-modal-content-zoom {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+    .interactive-card, .interactive-button {
+      transform: none !important;
+      transition: none !important;
+    }
+    .interactive-card:hover {
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    .interactive-button:hover, .interactive-button:active {
+      transform: none !important;
+    }
+    .gauge-path {
+      transition: none !important;
+    }
+  }
+}
