@@ -52,6 +52,7 @@ function createMockRes() {
 
 const CONFIG_PATH = path.join(process.cwd(), "config", "access-control.json");
 let originalConfigContent = "";
+const originalNodeEnv = process.env.NODE_ENV;
 
 function backupConfig() {
   if (fs.existsSync(CONFIG_PATH)) {
@@ -241,8 +242,120 @@ try {
     assert(res.statusCode === 200, "Status should be 200");
   });
 
-  // Scenario 7: Fallback on missing or invalid config file
-  runTest("7. Fallback on missing config file", () => {
+  // Scenario 7: Requests from countries outside the allowlist are denied
+  runTest("7. Country outside allowedCountries receives a 403 response", () => {
+    writeTestConfig({
+      geoAccess: {
+        enabled: true,
+        allowedCountries: ["US"],
+        unknownCountryPolicy: "allow",
+        logDeniedRequests: false,
+        trustProxyHeaders: false,
+        trustedProxyIps: []
+      }
+    });
+
+    const req = createMockReq({}, "/api/projects", "12.34.56.78");
+    const res = createMockRes();
+    let nextCalled = false;
+
+    testDetector.setMockCountry("DE");
+    geoAccessMiddleware(req, res, () => { nextCalled = true; });
+
+    assert(!nextCalled, "next() must not be called for a blocked country");
+    assert(res.statusCode === 403, `Expected blocked country response status 403, got ${res.statusCode}`);
+    assert(res.jsonPayload?.success === false, "Blocked response must report success = false");
+    assert(
+      res.jsonPayload?.error === "Доступ ограничен в соответствии с правилами геолокационной безопасности вашей страны.",
+      "Blocked response must use the standard geo-access error message"
+    );
+  });
+
+  // Scenario 8: Allowed countries continue through the middleware
+  runTest("8. Country in allowedCountries is allowed", () => {
+    writeTestConfig({
+      geoAccess: {
+        enabled: true,
+        allowedCountries: ["US"],
+        unknownCountryPolicy: "deny",
+        logDeniedRequests: false,
+        trustProxyHeaders: false,
+        trustedProxyIps: []
+      }
+    });
+
+    const req = createMockReq({}, "/api/projects", "12.34.56.78");
+    const res = createMockRes();
+    let nextCalled = false;
+
+    testDetector.setMockCountry("us");
+    geoAccessMiddleware(req, res, () => { nextCalled = true; });
+
+    assert(nextCalled, "next() must be called for an allowed country");
+    assert(res.statusCode === 200, "Allowed country response must remain unchanged");
+    assert(res.jsonPayload === null, "Allowed country response must not write an error body");
+  });
+
+  // Scenario 9: Unknown countries follow the configured deny policy
+  runTest("9. Unknown country is denied when unknownCountryPolicy = deny", () => {
+    writeTestConfig({
+      geoAccess: {
+        enabled: true,
+        allowedCountries: ["US"],
+        unknownCountryPolicy: "deny",
+        logDeniedRequests: false,
+        trustProxyHeaders: false,
+        trustedProxyIps: []
+      }
+    });
+
+    const req = createMockReq({}, "/api/projects", "192.0.2.1");
+    const res = createMockRes();
+    let nextCalled = false;
+
+    testDetector.setMockCountry(null);
+    geoAccessMiddleware(req, res, () => { nextCalled = true; });
+
+    assert(!nextCalled, "next() must not be called when an unknown country is denied");
+    assert(res.statusCode === 403, `Expected unknown country response status 403, got ${res.statusCode}`);
+    assert(res.jsonPayload?.success === false, "Unknown-country denial must report success = false");
+  });
+
+  // Scenario 10: Production must not trust country headers without a configured proxy
+  runTest("10. Production ignores spoofed country headers when trustedProxyIps is empty", () => {
+    process.env.NODE_ENV = "production";
+    writeTestConfig({
+      geoAccess: {
+        enabled: true,
+        allowedCountries: ["US"],
+        unknownCountryPolicy: "deny",
+        logDeniedRequests: false,
+        trustProxyHeaders: true,
+        trustedProxyIps: []
+      }
+    });
+
+    const config = getGeoAccessConfig();
+    const req = createMockReq({
+      "CF-Connecting-IP": "8.8.8.8",
+      "CF-IPCountry": "US"
+    }, "/api/projects", "203.0.113.1");
+    const res = createMockRes();
+    let nextCalled = false;
+
+    testDetector.setMockCountry(null);
+    const resolvedIp = getUserIp(req, config);
+    const resolvedCountry = detectCountry(resolvedIp, req, config);
+    geoAccessMiddleware(req, res, () => { nextCalled = true; });
+
+    assert(resolvedIp === "203.0.113.1", `Expected direct connection IP, got ${resolvedIp}`);
+    assert(resolvedCountry === null, `Expected spoofed country header to be ignored, got ${resolvedCountry}`);
+    assert(!nextCalled, "next() must not be called for an untrusted unknown country");
+    assert(res.statusCode === 403, `Expected untrusted proxy response status 403, got ${res.statusCode}`);
+  });
+
+  // Scenario 11: Fallback on missing or invalid config file
+  runTest("11. Fallback on missing config file", () => {
     if (fs.existsSync(CONFIG_PATH)) {
       fs.unlinkSync(CONFIG_PATH);
     }
@@ -254,8 +367,8 @@ try {
     assert(config.trustProxyHeaders === false, "Default trustProxyHeaders should be false");
   });
 
-  // Scenario 8: CIDR block matching verification
-  runTest("8. CIDR range matching checks", () => {
+  // Scenario 12: CIDR block matching verification
+  runTest("12. CIDR range matching checks", () => {
     assert(isIpInCidr("192.168.1.5", "192.168.1.0/24") === true, "192.168.1.5 should match 192.168.1.0/24");
     assert(isIpInCidr("192.168.2.5", "192.168.1.0/24") === false, "192.168.2.5 should NOT match 192.168.1.0/24");
     assert(isIpInCidr("10.0.0.1", "10.0.0.1/32") === true, "10.0.0.1 should match 10.0.0.1/32");
@@ -271,5 +384,11 @@ try {
   console.log("-----------------------------------------------------------\n");
 
 } finally {
+  testDetector.setMockCountry(null);
+  if (originalNodeEnv === undefined) {
+    delete process.env.NODE_ENV;
+  } else {
+    process.env.NODE_ENV = originalNodeEnv;
+  }
   restoreConfig();
 }
