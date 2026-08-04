@@ -461,11 +461,7 @@ export async function saveEvaluationsToDisk(
     await writeJsonAtomic(SHEETS_IMPORT_REPORT_FILE, lastImportReport);
     await writeJsonAtomic(EVALUATIONS_META_FILE, meta);
 
-    // Keep legacy projects.json in sync so fallback works without Sheets
-    const PROJECTS_FILE = path.join(DATA_DIR, "projects.json");
-    await writeJsonAtomic(PROJECTS_FILE, projects);
-
-    console.log("[GoogleSheets-Cache] Successfully saved evaluations, metadata, normalized projects, and projects.json to disk.");
+    console.log("[GoogleSheets-Cache] Successfully saved evaluations, metadata, and normalized projects to disk.");
   } catch (err) {
     console.error("[GoogleSheets-Cache] Failed to save evaluations to disk:", err);
   }
