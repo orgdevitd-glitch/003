@@ -81,6 +81,134 @@ async function main() {
     assert(projectsFileExists, "projects.json should have been recreated");
   });
 
+  await runTest("Full sync replaces only its source and preserves app-owned metadata", async () => {
+    const projectsFile = path.join(TEST_DATA_DIR, "projects.json");
+    const existingAnalysis = { summary: "Keep this analysis" };
+    const otherSourceProject = {
+      projectId: "bitrix-kept",
+      projectName: "Bitrix project",
+      source: "bitrix24",
+      createdInAppAt: "2025-01-01T00:00:00.000Z",
+      customValue: "must remain unchanged"
+    };
+    await fs.writeJson(projectsFile, [
+      {
+        projectId: "sheets-updated",
+        projectName: "Old sheets name",
+        source: "sheets",
+        createdInAppAt: "2025-02-01T00:00:00.000Z",
+        updatedInAppAt: "2025-02-02T00:00:00.000Z",
+        lastSyncId: "sheets-sync-old",
+        lastAnalysis: existingAnalysis
+      },
+      {
+        projectId: "sheets-deleted",
+        projectName: "Removed from sheets",
+        source: "sheets"
+      },
+      {
+        projectId: "legacy-sheets-deleted",
+        projectName: "Legacy project without a source"
+      },
+      otherSourceProject
+    ]);
+    await fs.writeJson(path.join(TEST_DATA_DIR, "sync-logs.json"), []);
+
+    const result = await storage.upsertProjects([
+      {
+        projectId: "sheets-updated",
+        projectName: "New sheets name",
+        createdInAppAt: "incoming-value-must-not-win",
+        lastAnalysis: { summary: "Incoming analysis must not win" }
+      } as any,
+      {
+        projectId: "sheets-created",
+        projectName: "New sheets project"
+      } as any,
+      {
+        projectId: "invalid-project-without-name"
+      } as any
+    ], "sheets-sync-full-regression", "full");
+
+    assert(result.receivedProjects === 3, "Full sync should report every received row");
+    assert(result.created === 1, "Full sync should report one created project");
+    assert(result.updated === 1, "Full sync should report one updated project");
+    assert(result.deleted === 2, "Full sync should delete omitted sheets and legacy sheets projects");
+    assert(result.errors.length === 1, "Full sync should report the invalid incoming project");
+
+    const storedProjects: any[] = await storage.getAllProjects();
+    assert(storedProjects.length === 3, "Full sync should leave two sheets projects and one Bitrix project");
+    assert(!storedProjects.some(project => project.projectId === "sheets-deleted"), "Omitted sheets project should be deleted");
+    assert(!storedProjects.some(project => project.projectId === "legacy-sheets-deleted"), "Omitted legacy sheets project should be deleted");
+
+    const updated = storedProjects.find(project => project.projectId === "sheets-updated");
+    assert(updated?.projectName === "New sheets name", "Incoming business fields should update");
+    assert(updated?.source === "sheets", "Updated project should be attributed to the sync source");
+    assert(updated?.lastSyncId === "sheets-sync-full-regression", "Updated project should record the latest sync");
+    assert(updated?.createdInAppAt === "2025-02-01T00:00:00.000Z", "Full sync must preserve the original creation timestamp");
+    assert(updated?.lastAnalysis?.summary === existingAnalysis.summary, "Full sync must preserve the existing analysis");
+
+    const created = storedProjects.find(project => project.projectId === "sheets-created");
+    assert(created?.source === "sheets", "Created project should be attributed to sheets");
+    assert(Boolean(created?.createdInAppAt), "Created project should receive an app creation timestamp");
+    assert(created?.createdInAppAt === created?.updatedInAppAt, "New project timestamps should be initialized together");
+
+    const preservedOtherSource = storedProjects.find(project => project.projectId === "bitrix-kept");
+    assert(
+      JSON.stringify(preservedOtherSource) === JSON.stringify(otherSourceProject),
+      "A sheets full sync must not mutate or delete a Bitrix project"
+    );
+  });
+
+  await runTest("Incremental sync updates supplied projects without deleting omitted projects", async () => {
+    const projectsFile = path.join(TEST_DATA_DIR, "projects.json");
+    await fs.writeJson(projectsFile, [
+      {
+        projectId: "bitrix-updated",
+        projectName: "Old Bitrix name",
+        source: "bitrix24",
+        createdInAppAt: "2025-03-01T00:00:00.000Z",
+        lastAnalysis: { summary: "Preserved incremental analysis" }
+      },
+      {
+        projectId: "bitrix-omitted",
+        projectName: "Not included in this batch",
+        source: "bitrix24"
+      },
+      {
+        projectId: "sheets-omitted",
+        projectName: "Unrelated sheets project",
+        source: "sheets"
+      }
+    ]);
+    await fs.writeJson(path.join(TEST_DATA_DIR, "sync-logs.json"), []);
+
+    const result = await storage.upsertProjects([
+      {
+        projectId: "bitrix-updated",
+        projectName: "New Bitrix name"
+      } as any
+    ], "bitrix-sync-incremental-regression", "incremental");
+
+    assert(result.created === 0, "Incremental sync should not report a creation");
+    assert(result.updated === 1, "Incremental sync should report the supplied update");
+    assert(result.deleted === 0, "Incremental sync must not report deletions");
+
+    const storedProjects: any[] = await storage.getAllProjects();
+    assert(storedProjects.length === 3, "Incremental sync must preserve omitted projects");
+    assert(storedProjects.some(project => project.projectId === "bitrix-omitted"), "Omitted same-source project should remain");
+    assert(storedProjects.some(project => project.projectId === "sheets-omitted"), "Omitted other-source project should remain");
+
+    const updated = storedProjects.find(project => project.projectId === "bitrix-updated");
+    assert(updated?.projectName === "New Bitrix name", "Incremental sync should update incoming business fields");
+    assert(updated?.source === "bitrix24", "Incremental update should record the Bitrix source");
+    assert(updated?.createdInAppAt === "2025-03-01T00:00:00.000Z", "Incremental sync must preserve the creation timestamp");
+    assert(
+      updated?.lastAnalysis?.summary === "Preserved incremental analysis",
+      "Incremental sync must preserve the existing analysis"
+    );
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {
