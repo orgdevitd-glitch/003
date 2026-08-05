@@ -81,11 +81,12 @@ export class JsonProjectStorage implements ProjectStorage {
     }
 
     const incomingIds = new Set<string>();
+    const validIncomingIds = new Set<string>();
     const validIncomingProjects: Project[] = [];
     const errors: any[] = [];
 
     for (const project of projects) {
-      if (!project.projectId || !project.projectName) {
+      if (!project.projectId) {
         errors.push({
           projectId: project.projectId,
           message: "projectId and projectName are required"
@@ -93,6 +94,14 @@ export class JsonProjectStorage implements ProjectStorage {
         continue;
       }
       incomingIds.add(project.projectId);
+      if (!project.projectName) {
+        errors.push({
+          projectId: project.projectId,
+          message: "projectId and projectName are required"
+        });
+        continue;
+      }
+      validIncomingIds.add(project.projectId);
       validIncomingProjects.push(project);
     }
 
@@ -110,8 +119,8 @@ export class JsonProjectStorage implements ProjectStorage {
         const isSameSource = p.source === targetSource || (!p.source && targetSource === "sheets");
         if (isSameSource && !incomingIds.has(p.projectId)) {
           deleted++;
-        } else if (!isSameSource) {
-          // Keep other source's project
+        } else if (!isSameSource || !validIncomingIds.has(p.projectId)) {
+          // Keep projects from other sources and last-known-good data for invalid incoming rows
           updatedProjects.push(p);
         }
       }
