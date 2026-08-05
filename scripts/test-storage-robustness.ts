@@ -81,6 +81,35 @@ async function main() {
     assert(projectsFileExists, "projects.json should have been recreated");
   });
 
+  await runTest("Full sync preserves an existing project when its incoming row is invalid", async () => {
+    const existingProject = {
+      projectId: "project-1",
+      projectName: "Existing project",
+      status: "active" as const,
+      tasks: [],
+      milestones: [],
+      indicators: []
+    };
+    await storage.upsertProjects([existingProject], "bitrix-seed", "full");
+
+    const result = await storage.upsertProjects([
+      {
+        projectId: "project-1",
+        projectName: "",
+        status: "active" as const,
+        tasks: [],
+        milestones: [],
+        indicators: []
+      }
+    ], "bitrix-next", "full");
+
+    const projects = await storage.getAllProjects();
+    assert(result.errors.length === 1, "Invalid incoming row should be reported");
+    assert(result.deleted === 0, "Invalid incoming row with a known ID must not count as deleted");
+    assert(projects.length === 1, "Existing project must remain in storage");
+    assert(projects[0].projectName === "Existing project", "Existing valid project data must be preserved");
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {
