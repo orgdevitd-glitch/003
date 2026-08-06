@@ -4,7 +4,8 @@ import {
   hashAdvancedPassword,
   isAdvancedAccessActive,
   createAdvancedAccessSession,
-  revokeAdvancedAccessSession
+  revokeAdvancedAccessSession,
+  resolveAnalysisAssessmentDate
 } from "../server/services/advancedAccessService";
 import fs from "fs-extra";
 import path from "path";
@@ -175,6 +176,35 @@ async function main() {
 
       delete process.env.ADVANCED_ACCESS_PASSWORD;
       delete process.env.ADVANCED_ACCESS_PASSWORD_HASH;
+    });
+
+    runTest("6. Today analysis mode ignores a supplied arbitrary date", () => {
+      const now = new Date("2026-08-06T11:00:00.000Z");
+      const result = resolveAnalysisAssessmentDate(
+        "2020-01-01T00:00:00.000Z",
+        "today",
+        now
+      );
+
+      assert(result.assessmentDateMode === "today", "Today mode must remain explicit");
+      assert(
+        result.assessmentDate.toISOString() === now.toISOString(),
+        "Today mode must use the server date instead of a client-supplied date"
+      );
+    });
+
+    runTest("7. Custom analysis dates remain subject to advanced access", () => {
+      const result = resolveAnalysisAssessmentDate(
+        "2020-01-01T00:00:00.000Z",
+        "custom",
+        new Date("2026-08-06T11:00:00.000Z")
+      );
+
+      assert(result.assessmentDateMode === "custom", "A valid custom date must be marked custom");
+      assert(
+        result.assessmentDate.toISOString() === "2020-01-01T00:00:00.000Z",
+        "Custom mode must preserve its requested date for the authorization gate"
+      );
     });
 
     // --- Server-Side Integration Tests ---

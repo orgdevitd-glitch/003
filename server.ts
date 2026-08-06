@@ -19,7 +19,8 @@ import {
   verifyAdvancedAccessPassword,
   isAdvancedAccessActive,
   createAdvancedAccessSession,
-  revokeAdvancedAccessSession
+  revokeAdvancedAccessSession,
+  resolveAnalysisAssessmentDate
 } from "./server/services/advancedAccessService";
 
 dotenv.config();
@@ -534,23 +535,10 @@ async function startServer() {
         return res.status(404).json({ success: false, error: "Project not found" });
       }
 
-      let assessmentDate = new Date();
-      let assessmentDateMode: "today" | "custom" | "server_fallback" = "server_fallback";
-
-      const rawAssessmentDateMode = req.body.assessmentDateMode;
-      const isValidAssessmentDateMode = rawAssessmentDateMode === "today" || rawAssessmentDateMode === "custom";
-
-      if (req.body.assessmentDate && typeof req.body.assessmentDate === 'string') {
-        const parsed = new Date(req.body.assessmentDate);
-        if (!isNaN(parsed.getTime())) {
-          assessmentDate = parsed;
-          assessmentDateMode = isValidAssessmentDateMode ? rawAssessmentDateMode : "custom";
-        } else {
-          assessmentDateMode = "server_fallback";
-        }
-      } else {
-        assessmentDateMode = "server_fallback";
-      }
+      const { assessmentDate, assessmentDateMode } = resolveAnalysisAssessmentDate(
+        req.body.assessmentDate,
+        req.body.assessmentDateMode
+      );
 
       const assessmentDateStr = assessmentDate.toISOString().split("T")[0];
       const localD = new Date();
