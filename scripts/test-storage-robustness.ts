@@ -109,12 +109,12 @@ async function main() {
 
   await runTest("Atomic replacement failure preserves last-known-good data", async () => {
     const metaFile = path.join(TEST_DATA_DIR, "sheets-sync-meta.json");
-    const originalMove = fs.move;
+    const originalRename = fs.rename;
     const previousMeta = { marker: "last-known-good" };
     await storage.saveSheetsSyncMeta(previousMeta);
 
     try {
-      (fs as any).move = async () => {
+      (fs as any).rename = async () => {
         throw new Error("Simulated interrupted atomic replacement");
       };
 
@@ -134,7 +134,7 @@ async function main() {
         "Interrupted replacement must preserve the previous complete file"
       );
     } finally {
-      (fs as any).move = originalMove;
+      (fs as any).rename = originalRename;
     }
   });
 

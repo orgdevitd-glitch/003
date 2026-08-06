@@ -67,7 +67,7 @@ export class JsonProjectStorage implements ProjectStorage {
     const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
     try {
       await fs.writeJson(tmpPath, data);
-      await fs.move(tmpPath, filePath, { overwrite: true });
+      await fs.rename(tmpPath, filePath);
     } catch (err) {
       console.error(`[Storage Error] Failed to write JSON to ${filePath}`, err);
       try {
