@@ -13,6 +13,7 @@ const ANALYSIS_FILE = path.join(DATA_DIR, "analysis-results.json");
 
 export class JsonProjectStorage implements ProjectStorage {
   private initPromise: Promise<void>;
+  private mutationQueue: Promise<void> = Promise.resolve();
 
   constructor() {
     this.initPromise = this.ensureDataDir();
@@ -79,6 +80,15 @@ export class JsonProjectStorage implements ProjectStorage {
     }
   }
 
+  private enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutationQueue.then(operation, operation);
+    this.mutationQueue = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  }
+
   async getAllProjects(): Promise<Project[]> {
     return await this.safeReadJson<Project[]>(PROJECTS_FILE, []);
   }
@@ -89,6 +99,10 @@ export class JsonProjectStorage implements ProjectStorage {
   }
 
   async upsertProjects(projects: Project[], syncId: string, mode: string): Promise<ImportResult> {
+    return this.enqueueMutation(() => this.upsertProjectsUnlocked(projects, syncId, mode));
+  }
+
+  private async upsertProjectsUnlocked(projects: Project[], syncId: string, mode: string): Promise<ImportResult> {
     const existingProjects: Project[] = await this.getAllProjects();
     const existingProjectsMap = new Map<string, Project>();
     for (const p of existingProjects) {
@@ -224,6 +238,10 @@ export class JsonProjectStorage implements ProjectStorage {
   }
 
   async saveAnalysis(projectId: string, analysis: ProjectAnalysisResult): Promise<void> {
+    return this.enqueueMutation(() => this.saveAnalysisUnlocked(projectId, analysis));
+  }
+
+  private async saveAnalysisUnlocked(projectId: string, analysis: ProjectAnalysisResult): Promise<void> {
     const analyses = await this.safeReadJson<Record<string, ProjectAnalysisResult>>(ANALYSIS_FILE, {});
     analyses[projectId] = analysis;
     await this.safeWriteJson(ANALYSIS_FILE, analyses);

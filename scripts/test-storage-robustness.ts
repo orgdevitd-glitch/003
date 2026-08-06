@@ -86,6 +86,32 @@ async function main() {
     assert(projectsFileExists, "projects.json should have been recreated");
   });
 
+  await runTest("Concurrent incremental imports preserve both updates", async () => {
+    const buildProject = (projectId: string, projectName: string) => ({
+      projectId,
+      projectName,
+      status: "active" as const,
+      tasks: [],
+      milestones: [],
+      indicators: []
+    });
+
+    await Promise.all([
+      storage.upsertProjects([buildProject("concurrent-a", "Concurrent A")], "bitrix-a", "incremental"),
+      storage.upsertProjects([buildProject("concurrent-b", "Concurrent B")], "bitrix-b", "incremental")
+    ]);
+
+    const projects = await storage.getAllProjects();
+    assert(
+      projects.some(project => project.projectId === "concurrent-a"),
+      "The first concurrent import must not be overwritten"
+    );
+    assert(
+      projects.some(project => project.projectId === "concurrent-b"),
+      "The second concurrent import must not be overwritten"
+    );
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {
