@@ -324,5 +324,75 @@ runTest("Empty Facts Permitted in Future Quarters", () => {
   assert(!hasAnyErrors, "Valid future indicator sequence with zero errors");
 });
 
+runTest("Monitoring Lifecycle Boundaries and Date Ordering", () => {
+  const headers = [
+    "ID", "Название", "Цели проекта", "Образы результатов", "Дата начала", "Дата завершения",
+    "Стадия", "Вид", "Приоритет", "Дата начала мониторинга",
+    "Регулярность мониторинга (1 раз в количество недель)", "Дата последнего мониторинга"
+  ];
+  const baseRow: Record<string, string> = {
+    "ID": "41",
+    "Название": "Контроль мониторинга",
+    "Цели проекта": "Проверить цикл мониторинга",
+    "Образы результатов": "Стабильный график контроля",
+    "Дата начала": "01.01.2026",
+    "Дата завершения": "31.12.2026",
+    "Стадия": "В работе",
+    "Вид": "Проект",
+    "Приоритет": "1",
+    "Дата начала мониторинга": "01.06.2026",
+    "Регулярность мониторинга (1 раз в количество недель)": "2",
+    "Дата последнего мониторинга": ""
+  };
+
+  const beforeFirstControl = validateProjectRows([baseRow], headers, {
+    assessmentDate: new Date("2026-06-14T00:00:00Z"),
+    detectedYears: []
+  });
+  assert(
+    !beforeFirstControl.issues.some(issue => issue.code === "LAST_MONITORING_DATE_MISSING"),
+    "Last monitoring date should remain optional before the first scheduled control"
+  );
+
+  const atFirstControl = validateProjectRows([baseRow], headers, {
+    assessmentDate: new Date("2026-06-15T00:00:00Z"),
+    detectedYears: []
+  });
+  assert(
+    atFirstControl.issues.some(
+      issue => issue.code === "LAST_MONITORING_DATE_MISSING" && issue.severity === "warning"
+    ),
+    "Missing last monitoring date should be reported when the first scheduled control is due"
+  );
+
+  const invalidOrdering = validateProjectRows([{
+    ...baseRow,
+    "Дата последнего мониторинга": "31.05.2026"
+  }], headers, {
+    assessmentDate: new Date("2026-06-20T00:00:00Z"),
+    detectedYears: []
+  });
+  assert(
+    invalidOrdering.issues.some(
+      issue => issue.code === "LAST_MON_BEFORE_MON_START" && issue.severity === "error"
+    ),
+    "Last monitoring date before monitoring start should be rejected"
+  );
+
+  const futureMonitoring = validateProjectRows([{
+    ...baseRow,
+    "Дата последнего мониторинга": "21.06.2026"
+  }], headers, {
+    assessmentDate: new Date("2026-06-20T00:00:00Z"),
+    detectedYears: []
+  });
+  assert(
+    futureMonitoring.issues.some(
+      issue => issue.code === "LAST_MON_IN_FUTURE" && issue.severity === "error"
+    ),
+    "Last monitoring date after the assessment date should be rejected"
+  );
+});
+
 console.log("All validation tests successfully executed!");
 process.exit(0);
