@@ -1,5 +1,6 @@
 import fs from "fs-extra";
 import path from "path";
+import crypto from "crypto";
 import { Project, ProjectAnalysisResult, SyncLog } from "../../src/types";
 import { ProjectStorage, ImportResult } from "./projectStorage";
 
@@ -31,21 +32,28 @@ export class JsonProjectStorage implements ProjectStorage {
 
   private async safeReadJson<T>(filePath: string, defaultValue: T): Promise<T> {
     await this.initPromise;
+    const canResetSafely = filePath !== PROJECTS_FILE && filePath !== ANALYSIS_FILE;
     try {
       if (!(await fs.pathExists(filePath))) {
-        await fs.writeJson(filePath, defaultValue);
+        await this.safeWriteJson(filePath, defaultValue);
         return defaultValue;
       }
       const content = await fs.readFile(filePath, "utf8");
       if (!content.trim()) {
-        await fs.writeJson(filePath, defaultValue);
-        return defaultValue;
+        throw new Error("JSON file is empty");
       }
       return JSON.parse(content) as T;
     } catch (err) {
+      if (!canResetSafely) {
+        console.error(
+          `[Storage Error] Refusing to overwrite authoritative data in ${filePath} after a read failure.`,
+          err
+        );
+        throw err;
+      }
       console.error(`[Storage Warning] Error reading JSON from ${filePath}. Recovering with default.`, err);
       try {
-        await fs.writeJson(filePath, defaultValue);
+        await this.safeWriteJson(filePath, defaultValue);
       } catch (writeErr) {
         console.error(`[Storage Error] Failed to write default JSON back to ${filePath}`, writeErr);
         throw writeErr;
@@ -56,10 +64,17 @@ export class JsonProjectStorage implements ProjectStorage {
 
   private async safeWriteJson<T>(filePath: string, data: T): Promise<void> {
     await this.initPromise;
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
     try {
-      await fs.writeJson(filePath, data);
+      await fs.writeJson(tmpPath, data);
+      await fs.rename(tmpPath, filePath);
     } catch (err) {
       console.error(`[Storage Error] Failed to write JSON to ${filePath}`, err);
+      try {
+        if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath);
+      } catch (cleanupErr) {
+        console.error(`[Storage Warning] Failed to clean up temporary file ${tmpPath}`, cleanupErr);
+      }
       throw err;
     }
   }

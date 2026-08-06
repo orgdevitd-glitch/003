@@ -41,32 +41,37 @@ async function main() {
     assert(projectsFileExists, "projects.json should exist");
   });
 
-  await runTest("Corrupt JSON self-recovery", async () => {
+  await runTest("Corrupt project JSON is preserved for recovery", async () => {
     const projectsFile = path.join(TEST_DATA_DIR, "projects.json");
-    // Write corrupted text
-    await fs.writeFile(projectsFile, "{ corrupt_json: ");
+    const corruptedContent = "{ corrupt_json: ";
+    await fs.writeFile(projectsFile, corruptedContent);
 
-    // Read and expect recovery
-    const projects = await storage.getAllProjects();
-    assert(Array.isArray(projects) && projects.length === 0, "Corrupted file should fall back to []");
+    let threw = false;
+    try {
+      await storage.getAllProjects();
+    } catch {
+      threw = true;
+    }
+    assert(threw, "Corrupted authoritative project data should fail closed");
 
-    // File should be rewritten with valid json []
     const content = await fs.readFile(projectsFile, "utf8");
-    assert(content.trim() === "[]", "File should have been rewritten with the default array []");
+    assert(content === corruptedContent, "Corrupted project data must remain available for recovery");
   });
 
-  await runTest("Empty JSON file self-recovery", async () => {
+  await runTest("Empty project JSON is preserved for recovery", async () => {
     const projectsFile = path.join(TEST_DATA_DIR, "projects.json");
-    // Write empty file
     await fs.writeFile(projectsFile, "   ");
 
-    // Read and expect recovery
-    const projects = await storage.getAllProjects();
-    assert(Array.isArray(projects) && projects.length === 0, "Empty file should fall back to []");
+    let threw = false;
+    try {
+      await storage.getAllProjects();
+    } catch {
+      threw = true;
+    }
+    assert(threw, "Empty authoritative project data should fail closed");
 
-    // File should be rewritten with valid json []
     const content = await fs.readFile(projectsFile, "utf8");
-    assert(content.trim() === "[]", "Empty file should have been rewritten with the default array []");
+    assert(content === "   ", "Empty project data must not be replaced with an empty dataset");
   });
 
   await runTest("Missing JSON file auto-creation on read", async () => {
@@ -102,6 +107,37 @@ async function main() {
     }
   });
 
+  await runTest("Atomic replacement failure preserves last-known-good data", async () => {
+    const metaFile = path.join(TEST_DATA_DIR, "sheets-sync-meta.json");
+    const originalRename = fs.rename;
+    const previousMeta = { marker: "last-known-good" };
+    await storage.saveSheetsSyncMeta(previousMeta);
+
+    try {
+      (fs as any).rename = async () => {
+        throw new Error("Simulated interrupted atomic replacement");
+      };
+
+      let threw = false;
+      try {
+        await storage.saveSheetsSyncMeta({ marker: "new-data" });
+      } catch (e: any) {
+        if (e.message === "Simulated interrupted atomic replacement") {
+          threw = true;
+        }
+      }
+      assert(threw, "Expected atomic replacement failure to propagate");
+
+      const persistedMeta = await fs.readJson(metaFile);
+      assert(
+        persistedMeta.marker === previousMeta.marker,
+        "Interrupted replacement must preserve the previous complete file"
+      );
+    } finally {
+      (fs as any).rename = originalRename;
+    }
+  });
+
   await runTest("Initialization error propagation in ensureDataDir", async () => {
     const originalEnsureDir = fs.ensureDir;
     try {
@@ -128,9 +164,9 @@ async function main() {
 
   await runTest("Recovery write failure in safeReadJson is propagated", async () => {
     const originalWriteJson = fs.writeJson;
-    const projectsFile = path.join(TEST_DATA_DIR, "projects.json");
-    // Write empty file to trigger recovery
-    await fs.writeFile(projectsFile, "   ");
+    const syncLogsFile = path.join(TEST_DATA_DIR, "sync-logs.json");
+    // Non-authoritative diagnostics may reset, but reset failures must propagate.
+    await fs.writeFile(syncLogsFile, "   ");
 
     try {
       // Mock writeJson to fail
@@ -140,7 +176,7 @@ async function main() {
 
       let threw = false;
       try {
-        await storage.getAllProjects();
+        await storage.getSyncLogs();
       } catch (e: any) {
         if (e.message === "Simulated Write Error during recovery") {
           threw = true;
