@@ -112,6 +112,66 @@ async function main() {
     );
   });
 
+  await runTest("Full sync keeps project IDs unique across sources", async () => {
+    const makeProject = (projectId: string, projectName: string) => ({
+      projectId,
+      projectName,
+      status: "active" as const,
+      tasks: [],
+      milestones: [],
+      indicators: []
+    });
+
+    await storage.upsertProjects(
+      [makeProject("shared-id", "Bitrix version")],
+      "bitrix-seed",
+      "full"
+    );
+    await storage.upsertProjects(
+      [makeProject("shared-id", "Sheets version")],
+      "sheets-sync-overlap",
+      "full"
+    );
+
+    const projects = await storage.getAllProjects();
+    const matchingProjects = projects.filter(project => project.projectId === "shared-id");
+    assert(matchingProjects.length === 1, "A cross-source ID must have exactly one stored row");
+    assert(matchingProjects[0].projectName === "Sheets version", "The incoming full sync should win");
+    assert(matchingProjects[0].source === "sheets", "The winning row should record its source");
+  });
+
+  await runTest("Duplicate and missing-sentinel IDs are rejected", async () => {
+    const makeProject = (projectId: string, projectName: string) => ({
+      projectId,
+      projectName,
+      status: "active" as const,
+      tasks: [],
+      milestones: [],
+      indicators: []
+    });
+
+    const result = await storage.upsertProjects(
+      [
+        makeProject("duplicate-id", "First row"),
+        makeProject("duplicate-id", "Second row"),
+        makeProject("N/A", "Missing ID row")
+      ],
+      "bitrix-invalid-ids",
+      "incremental"
+    );
+
+    const projects = await storage.getAllProjects();
+    assert(result.errors.length === 2, "Duplicate and sentinel IDs should both be reported");
+    assert(
+      projects.filter(project => project.projectId === "duplicate-id").length === 1,
+      "Only the first incoming duplicate ID should be stored"
+    );
+    assert(
+      !projects.some(project => project.projectId === "N/A"),
+      "The missing-ID sentinel must never reach storage"
+    );
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {

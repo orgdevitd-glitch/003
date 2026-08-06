@@ -114,15 +114,26 @@ export class JsonProjectStorage implements ProjectStorage {
     const errors: any[] = [];
 
     for (const project of projects) {
-      if (!project.projectId || !project.projectName) {
+      const projectId = String(project.projectId || "").trim();
+      if (!projectId || projectId === "N/A" || !project.projectName) {
         errors.push({
-          projectId: project.projectId,
-          message: "projectId and projectName are required"
+          projectId,
+          message: "A real projectId and projectName are required"
         });
         continue;
       }
-      incomingIds.add(project.projectId);
-      validIncomingProjects.push(project);
+      if (incomingIds.has(projectId)) {
+        errors.push({
+          projectId,
+          message: "Duplicate projectId in the incoming batch"
+        });
+        continue;
+      }
+      incomingIds.add(projectId);
+      validIncomingProjects.push({
+        ...project,
+        projectId
+      });
     }
 
     let created = 0;
@@ -134,6 +145,7 @@ export class JsonProjectStorage implements ProjectStorage {
     const targetSource: "sheets" | "bitrix24" = syncId.startsWith("sheets-sync") ? "sheets" : "bitrix24";
 
     if (mode === "full") {
+      const updatedProjectsMap = new Map<string, Project>();
       // Find deleted projects (existed in store with the same source, but not present in incoming list)
       for (const p of existingProjects) {
         const isSameSource = p.source === targetSource || (!p.source && targetSource === "sheets");
@@ -141,7 +153,7 @@ export class JsonProjectStorage implements ProjectStorage {
           deleted++;
         } else if (!isSameSource) {
           // Keep other source's project
-          updatedProjects.push(p);
+          updatedProjectsMap.set(p.projectId, p);
         }
       }
 
@@ -149,7 +161,7 @@ export class JsonProjectStorage implements ProjectStorage {
       for (const project of validIncomingProjects) {
         const existing = existingProjectsMap.get(project.projectId);
         if (existing) {
-          updatedProjects.push({
+          updatedProjectsMap.set(project.projectId, {
             ...existing,
             ...project,
             createdInAppAt: existing.createdInAppAt,
@@ -160,7 +172,7 @@ export class JsonProjectStorage implements ProjectStorage {
           });
           updated++;
         } else {
-          updatedProjects.push({
+          updatedProjectsMap.set(project.projectId, {
             ...project,
             createdInAppAt: now,
             updatedInAppAt: now,
@@ -170,8 +182,9 @@ export class JsonProjectStorage implements ProjectStorage {
           created++;
         }
       }
+      updatedProjects = Array.from(updatedProjectsMap.values());
     } else {
-      updatedProjects = [...existingProjects];
+      updatedProjects = Array.from(existingProjectsMap.values());
       for (const project of validIncomingProjects) {
         const index = updatedProjects.findIndex(p => p.projectId === project.projectId);
         if (index !== -1) {
