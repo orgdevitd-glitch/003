@@ -1,4 +1,4 @@
-import { getGeoAccessConfig, geoAccessMiddleware, testDetector, getUserIp, detectCountry, isIpInCidr, isIpTrusted } from "../server/services/geoAccessService";
+import { GeoIpLiteDetector, getGeoAccessConfig, geoAccessMiddleware, testDetector, getUserIp, detectCountry, isIpInCidr, isIpTrusted } from "../server/services/geoAccessService";
 import fs from "fs-extra";
 import path from "path";
 
@@ -94,17 +94,17 @@ try {
     const config = getGeoAccessConfig();
 
     const req = createMockReq({
-      "CF-Connecting-IP": "8.8.8.8",
-      "CF-IPCountry": "US"
-    }, "/api/projects", "12.34.56.78");
+      "CF-Connecting-IP": "1.1.1.1",
+      "CF-IPCountry": "DE"
+    }, "/api/projects", "8.8.8.8");
 
-    // Because trustProxyHeaders = false, the resolved user IP must be connection IP (12.34.56.78)
+    // Because trustProxyHeaders = false, the resolved user IP must be the direct connection IP.
     const resolvedIp = getUserIp(req, config);
-    assert(resolvedIp === "12.34.56.78", `Expected user IP to be connection IP 12.34.56.78, got ${resolvedIp}`);
+    assert(resolvedIp === "8.8.8.8", `Expected user IP to be connection IP 8.8.8.8, got ${resolvedIp}`);
 
-    // Country should NOT be resolved from header CF-IPCountry since trustProxyHeaders is false
+    // Country must come from the direct IP, not the spoofed DE proxy header.
     const resolvedCountry = detectCountry(resolvedIp, req, config);
-    assert(resolvedCountry === null, `Expected country to be null (unresolved from headers), got ${resolvedCountry}`);
+    assert(resolvedCountry === "US", `Expected country "US" from direct IP lookup, got ${resolvedCountry}`);
   });
 
   // Scenario 2: trustProxyHeaders = true, request comes from trusted proxy, CF-IPCountry is accepted
@@ -152,17 +152,17 @@ try {
     testDetector.setMockCountry(null);
     const config = getGeoAccessConfig();
 
-    // Connection IP is "12.34.56.78", which is not trusted
+    // Connection IP is "8.8.8.8", which is not trusted
     const req = createMockReq({
-      "CF-Connecting-IP": "8.8.8.8",
-      "CF-IPCountry": "US"
-    }, "/api/projects", "12.34.56.78");
+      "CF-Connecting-IP": "1.1.1.1",
+      "CF-IPCountry": "DE"
+    }, "/api/projects", "8.8.8.8");
 
     const resolvedIp = getUserIp(req, config);
-    assert(resolvedIp === "12.34.56.78", `Expected IP to fallback to connection IP "12.34.56.78", got ${resolvedIp}`);
+    assert(resolvedIp === "8.8.8.8", `Expected IP to fallback to connection IP "8.8.8.8", got ${resolvedIp}`);
 
     const resolvedCountry = detectCountry(resolvedIp, req, config);
-    assert(resolvedCountry === null, `Expected country to be null due to untrusted connection IP, got ${resolvedCountry}`);
+    assert(resolvedCountry === "US", `Expected country "US" from direct IP lookup, got ${resolvedCountry}`);
   });
 
   // Scenario 4: X-Forwarded-For is not used if proxy is not trusted
@@ -264,6 +264,11 @@ try {
     // IP list checking
     assert(isIpTrusted("192.168.1.15", ["10.0.0.1", "192.168.1.0/24"]) === true, "192.168.1.15 should be trusted");
     assert(isIpTrusted("192.168.2.15", ["10.0.0.1", "192.168.1.0/24"]) === false, "192.168.2.15 should NOT be trusted");
+  });
+
+  runTest("9. Direct IP lookup has a bundled country database", () => {
+    const detector = new GeoIpLiteDetector();
+    assert(detector.detect("8.8.8.8") === "US", "8.8.8.8 should resolve to US without proxy headers");
   });
 
   console.log("\n-----------------------------------------------------------");

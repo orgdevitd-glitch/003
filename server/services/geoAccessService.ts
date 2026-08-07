@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "fs-extra";
 import path from "path";
+import geoip from "geoip-lite";
 
 export interface GeoAccessConfig {
   enabled: boolean;
@@ -144,33 +145,15 @@ export class HeaderCountryDetector implements ICountryDetector {
 }
 
 /**
- * Dynamic geoip-lite detector.
- * Only attempts to use geoip-lite if it is installed and loaded.
+ * Local GeoIP database detector.
  */
 export class GeoIpLiteDetector implements ICountryDetector {
   name = "geoip-lite";
-  private geoip: any = null;
-  private attemptFailed = false;
-
-  constructor() {
-    this.tryLoad();
-  }
-
-  private tryLoad() {
-    if (this.attemptFailed) return;
-    try {
-      // Dynamic require so it compiles even if geoip-lite is not installed yet
-      this.geoip = require("geoip-lite");
-    } catch (e) {
-      this.attemptFailed = true;
-    }
-  }
 
   detect(ip: string): string | null {
-    this.tryLoad();
-    if (!this.geoip || !ip) return null;
+    if (!ip) return null;
     try {
-      const lookup = this.geoip.lookup(ip);
+      const lookup = geoip.lookup(ip);
       if (lookup && lookup.country) {
         return lookup.country.toUpperCase();
       }
