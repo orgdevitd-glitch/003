@@ -1,7 +1,7 @@
 import express from "express";
 import fs from "fs-extra";
 import path from "path";
-import * as geoip from "geoip-lite";
+import geoip from "geoip-lite";
 
 export interface GeoAccessConfig {
   enabled: boolean;
