@@ -81,6 +81,27 @@ async function main() {
     assert(projectsFileExists, "projects.json should have been recreated");
   });
 
+  await runTest("Empty full sync preserves last-known-good source data", async () => {
+    const existingProject = {
+      projectId: "sheets-project-1",
+      projectName: "Last-known-good project",
+      status: "active" as const,
+      tasks: [],
+      milestones: [],
+      indicators: []
+    };
+
+    await storage.upsertProjects([existingProject], "sheets-sync-seed", "full");
+    const result = await storage.upsertProjects([], "sheets-sync-empty", "full");
+    const projects = await storage.getAllProjects();
+
+    assert(result.success === false, "An empty destructive full sync should be rejected");
+    assert(result.deleted === 0, "Rejected empty sync must not report deletions");
+    assert(result.errors.length === 1, "Rejected empty sync should explain why it was blocked");
+    assert(projects.length === 1, "Existing source data must remain in storage");
+    assert(projects[0].projectName === existingProject.projectName, "Stored project data must be unchanged");
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {

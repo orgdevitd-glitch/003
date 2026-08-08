@@ -410,6 +410,9 @@ async function startServer() {
       if (fetchSuccess) {
         // 2. Sync to local storage to preserve lastAnalysis and other metadata
         syncResult = await storage.upsertProjects(sheetsProjects, `sheets-sync-${Date.now()}`, "full");
+        if (!syncResult.success) {
+          warningMessage = "Google Sheets не вернул ни одного проекта. Показана последняя сохраненная копия.";
+        }
       }
 
       // 3. Return everything from local storage
@@ -480,7 +483,7 @@ async function startServer() {
       };
 
       const dataSource = {
-        mode: fetchSuccess ? "live" : "fallback",
+        mode: fetchSuccess && syncResult?.success !== false ? "live" : "fallback",
         projectsCount: projects.length
       };
 
