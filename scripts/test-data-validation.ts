@@ -3,8 +3,11 @@ import {
   splitListCell, 
   parseDateCell, 
   parseIntegerCell, 
+  parseNumberCell,
   parsePercentCell, 
-  parseUrlCell 
+  parseUrlCell,
+  isEmptyWeightValue,
+  parseMilestoneWeightCell
 } from "../server/services/dataParsing";
 import { 
   validateProjectRows, 
@@ -101,6 +104,60 @@ runTest("Percent Parser parsePercentCell", () => {
 
   const r3 = parsePercentCell("80");
   assert(r3.value === 80, "Raw integer should be kept as percent");
+});
+
+runTest("Integer Parser rounds localized decimals explicitly", () => {
+  const rounded = parseIntegerCell("1,6");
+  assert(rounded.value === 2, "Localized decimal should round to the nearest integer");
+  assert(rounded.status === "warning", "Rounding must be surfaced as a warning");
+  assert(rounded.warnings.length === 1, "Rounding must produce exactly one warning");
+
+  const exact = parseIntegerCell(" -3 ");
+  assert(exact.value === -3, "Signed integers should be accepted");
+  assert(exact.status === "success", "Exact integers should not produce warnings");
+
+  const invalid = parseIntegerCell("not-a-number");
+  assert(invalid.value === null, "Invalid integers must not produce a value");
+  assert(invalid.status === "error", "Invalid integers must return an error");
+});
+
+runTest("Number Parser handles localized values and rejects partial numbers", () => {
+  const localized = parseNumberCell("1 234,50");
+  assert(localized.value === 1234.5, "Spaces and decimal commas should be normalized");
+  assert(localized.status === "success", "Localized numeric input should succeed");
+
+  const signed = parseNumberCell("-0,75");
+  assert(signed.value === -0.75, "Signed localized decimals should be accepted");
+
+  for (const invalidValue of ["100abc", "1.2.3", "1,234,56", "NaN", "Infinity"]) {
+    const invalid = parseNumberCell(invalidValue);
+    assert(invalid.value === null, `"${invalidValue}" must not be partially parsed`);
+    assert(invalid.status === "error", `"${invalidValue}" must return an error`);
+  }
+});
+
+runTest("Milestone Weight Parser preserves empty and bounded-weight semantics", () => {
+  const placeholders = [null, undefined, "", "-", "—", "–", "нет", "Н/Д", "n/A", 0, "0%"];
+  for (const placeholder of placeholders) {
+    assert(isEmptyWeightValue(placeholder), `"${String(placeholder)}" should be an empty weight`);
+    const parsed = parseMilestoneWeightCell(placeholder);
+    assert(parsed.value === null, `"${String(placeholder)}" should normalize to null`);
+    assert(parsed.status === "success", "Empty weight placeholders should not be validation errors");
+  }
+
+  const excelFraction = parseMilestoneWeightCell("0.25");
+  assert(excelFraction.value === 25, "Excel fractions should be converted to percentage points");
+  assert(excelFraction.status === "warning", "Excel fraction conversion should remain visible");
+
+  const upperBound = parseMilestoneWeightCell("100%");
+  assert(upperBound.value === 100, "A 100% milestone weight should be accepted");
+
+  assert(parseMilestoneWeightCell("-1%").value === null, "Negative weights should be rejected");
+  assert(parseMilestoneWeightCell("101%").value === null, "Weights above 100% should be rejected");
+
+  const malformed = parseMilestoneWeightCell("not-a-weight");
+  assert(malformed.value === null, "Malformed weights should not produce a value");
+  assert(malformed.status === "error", "Malformed weights should retain parser errors");
 });
 
 // 3. Quarter Status Evaluation relative to Assessment Dates
