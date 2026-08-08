@@ -103,8 +103,19 @@ export class JsonProjectStorage implements ProjectStorage {
     let updatedProjects: Project[] = [];
 
     const targetSource: "sheets" | "bitrix24" = syncId.startsWith("sheets-sync") ? "sheets" : "bitrix24";
+    const preventedEmptyFullSync =
+      mode === "full" &&
+      projects.length === 0 &&
+      existingProjects.some(
+        p => p.source === targetSource || (!p.source && targetSource === "sheets")
+      );
 
-    if (mode === "full") {
+    if (preventedEmptyFullSync) {
+      updatedProjects = [...existingProjects];
+      errors.push({
+        message: `Refusing to delete all ${targetSource} projects from an empty full sync`
+      });
+    } else if (mode === "full") {
       // Find deleted projects (existed in store with the same source, but not present in incoming list)
       for (const p of existingProjects) {
         const isSameSource = p.source === targetSource || (!p.source && targetSource === "sheets");
@@ -170,7 +181,9 @@ export class JsonProjectStorage implements ProjectStorage {
       }
     }
 
-    await this.safeWriteJson(PROJECTS_FILE, updatedProjects);
+    if (!preventedEmptyFullSync) {
+      await this.safeWriteJson(PROJECTS_FILE, updatedProjects);
+    }
 
     // Diagnostics in console
     console.log(`[Sync Diagnostics - ${syncId}]`);
@@ -198,7 +211,7 @@ export class JsonProjectStorage implements ProjectStorage {
     await this.safeWriteJson(SYNC_LOGS_FILE, logs.slice(0, 100)); // Keep last 100 logs
 
     return {
-      success: true,
+      success: !preventedEmptyFullSync,
       syncId,
       receivedProjects: projects.length,
       created,
