@@ -3,7 +3,6 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import dotenv from "dotenv";
-import crypto from "crypto";
 import { JsonProjectStorage } from "./server/storage/jsonProjectStorage";
 import { analyzeProjectWithOpenAI } from "./server/services/openaiAnalysisService";
 import { buildProjectAnalysisPayload } from "./server/services/projectAnalysisPayloadService";
@@ -14,6 +13,7 @@ import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndica
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
 import { geoAccessMiddleware } from "./server/services/geoAccessService";
+import { installSessionAuth } from "./server/services/sessionAuthService";
 import { 
   getAdvancedAccessConfig, 
   verifyAdvancedAccessPassword,
@@ -25,63 +25,6 @@ import {
 dotenv.config();
 
 const storage = new JsonProjectStorage();
-
-// Session container for active tokens: token -> expiry timestamp (ms)
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
-const activeSessions = new Map<string, number>();
-
-function pruneExpiredSessions() {
-  const now = Date.now();
-  for (const [token, expiresAt] of activeSessions.entries()) {
-    if (expiresAt <= now) activeSessions.delete(token);
-  }
-}
-
-function isSessionValid(token: string | null): boolean {
-  if (!token) return false;
-  pruneExpiredSessions();
-  const expiresAt = activeSessions.get(token);
-  if (!expiresAt) return false;
-  if (expiresAt <= Date.now()) {
-    activeSessions.delete(token);
-    return false;
-  }
-  return true;
-}
-
-const getSessionFromCookie = (req: express.Request): string | null => {
-  const cookieHeader = req.headers.cookie;
-  if (!cookieHeader) return null;
-  const cookies = cookieHeader.split(";").reduce((acc: Record<string, string>, c: string) => {
-    const [name, ...val] = c.trim().split("=");
-    if (name) {
-      acc[name] = val.join("=");
-    }
-    return acc;
-  }, {});
-  return cookies.session || null;
-};
-
-// SHA-256 hash calculator for secure verification
-const getPasswordHash = (pwd: string): string => {
-  return crypto.createHash("sha256").update(pwd).digest("hex");
-};
-
-function verifyPassword(pwd: string): boolean {
-  const cleanPwd = pwd ? String(pwd).trim() : "";
-  
-  const envHash = process.env.APP_ACCESS_PASSWORD_HASH;
-  if (envHash && envHash.trim() !== "") {
-    return getPasswordHash(cleanPwd) === envHash.trim();
-  }
-  
-  const envPwd = process.env.APP_ACCESS_PASSWORD;
-  if (envPwd && envPwd.trim() !== "") {
-    return cleanPwd === envPwd.trim();
-  }
-  
-  return false;
-}
 
 async function startServer() {
   const app = express();
@@ -116,78 +59,7 @@ async function startServer() {
   });
   app.use(geoAccessMiddleware);
 
-  // Protection middleware for API endpoints
-  app.use((req, res, next) => {
-    const isPublicRoute =
-      req.path === "/api/auth/login" ||
-      req.path === "/api/auth/check" ||
-      req.path === "/api/auth/logout" ||
-      req.path === "/api/health" ||
-      req.path === "/api/bitrix/health" ||
-      req.path === "/api/bitrix/projects/import" ||
-      req.path === "/api/indicator-dictionary/status" ||
-      req.path === "/api/advanced-access/config" ||
-      req.path === "/api/advanced-access/verify" ||
-      req.path === "/api/advanced-access/status" ||
-      req.path === "/api/advanced-access/revoke";
-
-    if (isPublicRoute) {
-      return next();
-    }
-
-    if (req.path.startsWith("/api")) {
-      const token = getSessionFromCookie(req);
-      if (isSessionValid(token)) {
-        return next();
-      }
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-
-    next();
-  });
-
-  // Auth Endpoints
-  // 1. POST /api/auth/login
-  app.post("/api/auth/login", (req, res) => {
-    const { password } = req.body;
-    if (!password) {
-      return res.status(400).json({ success: false, error: "Пароль обязателен к заполнению" });
-    }
-
-    if (verifyPassword(password)) {
-      const sessionToken = crypto.randomBytes(32).toString("hex");
-      activeSessions.set(sessionToken, Date.now() + SESSION_TTL_MS);
-
-      // Max-Age is 43200 seconds (12 hours)
-      // SameSite=None; Secure must be used for cross-origin browser iframe environments
-      res.setHeader(
-        "Set-Cookie",
-        `session=${sessionToken}; HttpOnly; SameSite=None; Secure; Path=/; Max-Age=43200`
-      );
-      return res.json({ success: true, authenticated: true });
-    } else {
-      return res.status(401).json({ success: false, error: "Неверный пароль" });
-    }
-  });
-
-  // 2. GET /api/auth/check
-  app.get("/api/auth/check", (req, res) => {
-    const token = getSessionFromCookie(req);
-    if (isSessionValid(token)) {
-      return res.json({ authenticated: true });
-    }
-    return res.json({ authenticated: false });
-  });
-
-  // 3. POST /api/auth/logout
-  app.post("/api/auth/logout", (req, res) => {
-    const token = getSessionFromCookie(req);
-    if (token) {
-      activeSessions.delete(token);
-    }
-    res.setHeader("Set-Cookie", "session=; HttpOnly; SameSite=None; Secure; Path=/; Max-Age=0");
-    return res.json({ success: true });
-  });
+  installSessionAuth(app);
 
   // Advanced Access Endpoints
   app.get("/api/advanced-access/config", (req, res) => {
