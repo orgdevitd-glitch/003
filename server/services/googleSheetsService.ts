@@ -62,6 +62,24 @@ export function getLatestPortfolioEvaluation(): PortfolioEvaluation | null {
   return latestPortfolioEvaluation;
 }
 
+const BLOCKING_PROJECT_ID_ISSUES = new Set([
+  "ID_MISSING",
+  "ID_INVALID_FORMAT",
+  "ID_NOT_POSITIVE",
+  "DUPLICATE_ID"
+]);
+
+export function assertValidProjectIdentities(report: ImportValidationReport): void {
+  const blockingIssue = report.issues.find(issue =>
+    BLOCKING_PROJECT_ID_ISSUES.has(issue.code)
+  );
+  if (blockingIssue) {
+    throw new Error(
+      `Google Sheets sync rejected because project identity is invalid at row ${blockingIssue.rowIndex}: ${blockingIssue.message}`
+    );
+  }
+}
+
 interface FetchResult {
   data: string;
   statusCode?: number;
@@ -212,10 +230,12 @@ export async function fetchProjectsFromSheet(assessmentDate: Date = new Date()):
   console.log(`- Parsed csv. Row count: ${rawRowsCount}, Original headers found: ${JSON.stringify(rawHeaders)}, Normalized headers: ${JSON.stringify(parsedHeaders)}`);
 
   // Run validation process
+  let currentImportReport: ImportValidationReport;
   try {
     const report = validateProjectRows(normalizedRows, parsedHeaders, {
       assessmentDate
     });
+    currentImportReport = report;
     lastImportReport = report;
     console.log(`[Validation Report]
   - Количество строк: ${report.rowCount}
@@ -227,7 +247,10 @@ export async function fetchProjectsFromSheet(assessmentDate: Date = new Date()):
   - Статус структуры таблицы: ${report.structureStatus}`);
   } catch (valErr: any) {
     console.error("[Validation-Error] Failed to execute validation engine:", valErr);
+    throw new Error(`Google Sheets validation failed: ${valErr.message || String(valErr)}`);
   }
+
+  assertValidProjectIdentities(currentImportReport);
 
   if (parsedHeaders.length === 0) {
     console.error(`[GoogleSheets-Error] Empty CSV structure or header row missing. gid used: ${config.gid}`);
@@ -254,16 +277,16 @@ export async function fetchProjectsFromSheet(assessmentDate: Date = new Date()):
   // Normalize raw CSV records into NormalizedProject objects
   const normalized = normalizeProjectRows(normalizedRows, {
     assessmentDate,
-    detectedYears: lastImportReport?.detectedYears || columnAnalysis.detectedYears,
+    detectedYears: currentImportReport.detectedYears || columnAnalysis.detectedYears,
     columnAnalysis,
-    validationReport: lastImportReport || undefined
+    validationReport: currentImportReport
   });
   
   // Calculate project evaluations & portfolio metrics
   const indicatorDictionary = getIndicatorDictionary();
   const importIssuesByProjectId: Record<string, import("./dataValidation").DataIssue[]> = {};
-  if (lastImportReport?.issues?.length) {
-    for (const issue of lastImportReport.issues) {
+  if (currentImportReport.issues?.length) {
+    for (const issue of currentImportReport.issues) {
       const key = String(issue.projectId || "");
       if (!key) continue;
       if (!importIssuesByProjectId[key]) importIssuesByProjectId[key] = [];
