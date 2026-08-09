@@ -14,6 +14,7 @@ import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndica
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
 import { geoAccessMiddleware } from "./server/services/geoAccessService";
+import { isApiPath, isPublicApiPath } from "./server/services/apiAccessPolicy";
 import { 
   getAdvancedAccessConfig, 
   verifyAdvancedAccessPassword,
@@ -118,24 +119,11 @@ async function startServer() {
 
   // Protection middleware for API endpoints
   app.use((req, res, next) => {
-    const isPublicRoute =
-      req.path === "/api/auth/login" ||
-      req.path === "/api/auth/check" ||
-      req.path === "/api/auth/logout" ||
-      req.path === "/api/health" ||
-      req.path === "/api/bitrix/health" ||
-      req.path === "/api/bitrix/projects/import" ||
-      req.path === "/api/indicator-dictionary/status" ||
-      req.path === "/api/advanced-access/config" ||
-      req.path === "/api/advanced-access/verify" ||
-      req.path === "/api/advanced-access/status" ||
-      req.path === "/api/advanced-access/revoke";
-
-    if (isPublicRoute) {
+    if (isPublicApiPath(req.path)) {
       return next();
     }
 
-    if (req.path.startsWith("/api")) {
+    if (isApiPath(req.path)) {
       const token = getSessionFromCookie(req);
       if (isSessionValid(token)) {
         return next();
