@@ -290,7 +290,12 @@ async function startServer() {
     }
 
     try {
-      const result = await storage.upsertProjects(projects, syncId || `sync-${Date.now()}`, mode || "full");
+      const result = await storage.upsertProjects(
+        projects,
+        syncId || `sync-${Date.now()}`,
+        mode || "full",
+        "bitrix24"
+      );
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
@@ -397,7 +402,12 @@ async function startServer() {
 
       if (fetchSuccess) {
         // 2. Sync to local storage to preserve lastAnalysis and other metadata
-        syncResult = await storage.upsertProjects(sheetsProjects, `sheets-sync-${Date.now()}`, "full");
+        syncResult = await storage.upsertProjects(
+          sheetsProjects,
+          `sheets-sync-${Date.now()}`,
+          "full",
+          "sheets"
+        );
       }
 
       // 3. Return everything from local storage
