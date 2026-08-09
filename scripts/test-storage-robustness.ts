@@ -152,6 +152,52 @@ async function main() {
     }
   });
 
+  await runTest("Sync source cannot be spoofed through syncId", async () => {
+    const sheetsProject = {
+      projectId: "sheet-1",
+      projectName: "Sheets project",
+      status: "active",
+      tasks: [],
+      milestones: [],
+      indicators: []
+    };
+    const bitrixProject = {
+      projectId: "bitrix-1",
+      projectName: "Bitrix project",
+      status: "active",
+      tasks: [],
+      milestones: [],
+      indicators: []
+    };
+
+    await storage.upsertProjects(
+      [sheetsProject as any],
+      "initial-sheets-import",
+      "full",
+      "sheets"
+    );
+    await storage.upsertProjects(
+      [bitrixProject as any],
+      "sheets-sync-spoofed-by-client",
+      "full",
+      "bitrix24"
+    );
+
+    const projects = await storage.getAllProjects();
+    assert(projects.length === 2, "Bitrix sync must not delete the Sheets project");
+    assert(
+      projects.find(project => project.projectId === "sheet-1")?.source === "sheets",
+      "Sheets project source must be preserved"
+    );
+    assert(
+      projects.find(project => project.projectId === "bitrix-1")?.source === "bitrix24",
+      "Bitrix project source must come from the trusted caller"
+    );
+
+    const latestLog = (await storage.getSyncLogs())[0];
+    assert(latestLog.source === "bitrix24", "Sync log source must ignore the spoofed syncId");
+  });
+
   // Clean up test directory at the end
   try {
     await fs.remove(TEST_DATA_DIR);

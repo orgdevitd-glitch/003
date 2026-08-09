@@ -17,7 +17,12 @@ export interface ImportResult {
 export interface ProjectStorage {
   getAllProjects(): Promise<Project[]>;
   getProjectById(projectId: string): Promise<Project | null>;
-  upsertProjects(projects: Project[], syncId: string, mode: string): Promise<ImportResult>;
+  upsertProjects(
+    projects: Project[],
+    syncId: string,
+    mode: string,
+    source: "sheets" | "bitrix24"
+  ): Promise<ImportResult>;
   saveAnalysis(projectId: string, analysis: ProjectAnalysisResult): Promise<void>;
   getSyncLogs(): Promise<SyncLog[]>;
   getSheetsSyncMeta(): Promise<any>;

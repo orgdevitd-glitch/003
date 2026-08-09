@@ -12,6 +12,7 @@ import {
   splitListCell, 
   parseDateCell, 
   parseIntegerCell, 
+  parseProjectIdCell,
   parseNumberCell, 
   parsePercentCell, 
   parseUrlCell,
@@ -153,7 +154,7 @@ export function normalizeProjectRow(
 
   // 1. PROJECT ID & NAME
   const rawId = row["ID"] || row["ID проекта"] || row["ИД проекта"] || "";
-  const idResult = parseIntegerCell(rawId);
+  const idResult = parseProjectIdCell(rawId);
   const projectIdStr = idResult.value !== null ? String(idResult.value) : (String(rawId).trim() || "N/A");
 
   const title = String(row["Название"] || row["Название проекта"] || "").trim();
