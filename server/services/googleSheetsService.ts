@@ -86,9 +86,17 @@ interface FetchResult {
   contentType?: string;
 }
 
-export async function fetchCsvFromGoogleSheets(url: string): Promise<FetchResult> {
+const GOOGLE_SHEETS_FETCH_TIMEOUT_MS = 30_000;
+
+export async function fetchCsvFromGoogleSheets(
+  url: string,
+  timeoutMs: number = GOOGLE_SHEETS_FETCH_TIMEOUT_MS
+): Promise<FetchResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
+      signal: controller.signal,
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "text/csv,text/plain,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8",
@@ -105,10 +113,15 @@ export async function fetchCsvFromGoogleSheets(url: string): Promise<FetchResult
 
     return { data, statusCode, contentType };
   } catch (err: any) {
+    if (controller.signal.aborted) {
+      throw new Error(`Failed to fetch from Google Sheets: timed out after ${timeoutMs}ms`);
+    }
     if (err.message && err.message.includes("Failed to fetch from Google Sheets")) {
       throw err;
     }
     throw new Error(`Failed to fetch from Google Sheets: ${err.message || String(err)}`);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
