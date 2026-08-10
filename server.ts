@@ -9,11 +9,12 @@ import { analyzeProjectWithOpenAI } from "./server/services/openaiAnalysisServic
 import { buildProjectAnalysisPayload } from "./server/services/projectAnalysisPayloadService";
 import { fetchProjectsFromSheet, fetchCsvFromGoogleSheets, getLastImportReport, getLatestNormalizedProjects, getLatestProjectEvaluations, getLatestPortfolioEvaluation, restoreOrCalculateEvaluations, reconstructNormalizedProjectsFromLegacy } from "./server/services/googleSheetsService";
 import { handleChatAssistantMessage, getChatAssistantStatus } from "./server/services/chatAssistantService";
-import { getGoogleSheetsConfig, cleanEnv } from "./server/services/envHelper";
+import { getGoogleSheetsConfig } from "./server/services/envHelper";
 import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndicatorsReport, loadIndicatorDictionaryWithTTL } from "./server/services/indicatorDictionaryService";
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
 import { geoAccessMiddleware } from "./server/services/geoAccessService";
+import { installBitrixIngestRoute } from "./server/routes/bitrixIngestRoute";
 import { 
   getAdvancedAccessConfig, 
   verifyAdvancedAccessPassword,
@@ -267,47 +268,7 @@ async function startServer() {
   });
 
   // 7.3. bitrix/projects/import
-  app.post("/api/bitrix/projects/import", async (req, res) => {
-    const token = cleanEnv(process.env.APP_INGEST_TOKEN);
-
-    if (!token) {
-      return res.status(503).json({ success: false, error: "Ingest endpoint is not configured" });
-    }
-
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-
-    const trimmedHeader = authHeader.trim();
-    if (!trimmedHeader.toLowerCase().startsWith("bearer ")) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-
-    const rawProvidedToken = trimmedHeader.substring(7).trim();
-    const providedToken = cleanEnv(rawProvidedToken);
-
-    if (!providedToken) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-
-    if (providedToken !== token) {
-      return res.status(403).json({ success: false, error: "Forbidden" });
-    }
-
-    const { projects, syncId, mode } = req.body;
-
-    if (!Array.isArray(projects)) {
-      return res.status(400).json({ success: false, error: "projects must be an array" });
-    }
-
-    try {
-      const result = await storage.upsertProjects(projects, syncId || `sync-${Date.now()}`, mode || "full");
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
+  installBitrixIngestRoute(app, storage);
 
   // 7.4. GET /api/projects
   app.get("/api/projects", async (req, res) => {
