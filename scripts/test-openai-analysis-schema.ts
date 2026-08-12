@@ -89,7 +89,9 @@ function assertRejected(
     thrown = error;
   }
 
-  assert(thrown instanceof Error, "invalid result must be rejected");
+  if (!(thrown instanceof Error)) {
+    throw new Error("Assertion failed: invalid result must be rejected");
+  }
   assert(
     thrown.message.includes(expectedMessage),
     `expected error containing "${expectedMessage}", received "${thrown.message}"`
