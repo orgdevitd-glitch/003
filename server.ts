@@ -7,7 +7,7 @@ import crypto from "crypto";
 import { JsonProjectStorage } from "./server/storage/jsonProjectStorage";
 import { analyzeProjectWithOpenAI } from "./server/services/openaiAnalysisService";
 import { buildProjectAnalysisPayload } from "./server/services/projectAnalysisPayloadService";
-import { fetchProjectsFromSheet, fetchCsvFromGoogleSheets, getLastImportReport, getLatestNormalizedProjects, getLatestProjectEvaluations, getLatestPortfolioEvaluation, restoreOrCalculateEvaluations, reconstructNormalizedProjectsFromLegacy } from "./server/services/googleSheetsService";
+import { fetchProjectsFromSheet, fetchCsvFromGoogleSheets, getLatestNormalizedProjects, getLatestProjectEvaluations, restoreOrCalculateEvaluations, reconstructNormalizedProjectsFromLegacy } from "./server/services/googleSheetsService";
 import { handleChatAssistantMessage, getChatAssistantStatus } from "./server/services/chatAssistantService";
 import { getGoogleSheetsConfig, cleanEnv } from "./server/services/envHelper";
 import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndicatorsReport, loadIndicatorDictionaryWithTTL } from "./server/services/indicatorDictionaryService";
@@ -425,10 +425,10 @@ async function startServer() {
       }
 
       // Restore or recalculate evaluations for fallback or server restarted scenarios
-      await restoreOrCalculateEvaluations(rawProjects, assessmentDate);
-      
+      const evaluationSnapshot = await restoreOrCalculateEvaluations(rawProjects, assessmentDate);
+
       const projects = rawProjects;
-      const projectEvaluations = getLatestProjectEvaluations() || [];
+      const projectEvaluations = evaluationSnapshot.projectEvaluations || [];
       
       const stats = {
         total: projects.length,
@@ -487,9 +487,9 @@ async function startServer() {
       res.json({
         success: true,
         projects,
-        normalizedProjects: getLatestNormalizedProjects(),
+        normalizedProjects: evaluationSnapshot.normalizedProjects,
         projectEvaluations,
-        portfolioEvaluation: getLatestPortfolioEvaluation(),
+        portfolioEvaluation: evaluationSnapshot.portfolioEvaluation,
         stats,
         dataSource,
         sync: syncResult ? {
@@ -500,7 +500,7 @@ async function startServer() {
           removed: syncResult.deleted,
           totalActive: projects.length
         } : null,
-        importReport: getLastImportReport(),
+        importReport: evaluationSnapshot.importReport,
         indicatorDictionary: getIndicatorDictionary(),
         ...(warningMessage ? { warning: warningMessage } : {})
       });

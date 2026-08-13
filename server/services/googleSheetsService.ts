@@ -21,6 +21,14 @@ export type EvaluationCacheMeta = {
   methodologyVersion?: string;
 };
 
+export type EvaluationSnapshot = {
+  importReport: ImportValidationReport | null;
+  normalizedProjects: NormalizedProject[];
+  projectEvaluations: ProjectEvaluation[];
+  portfolioEvaluation: PortfolioEvaluation | null;
+  evaluationsMeta: EvaluationCacheMeta | null;
+};
+
 export const COMPLETENESS_METHODOLOGY_VERSION = "field-based-v2-monitoring-lifecycle-sync-v2";
 
 export function buildIndicatorDictionarySignature(dictionary: IndicatorDictionaryItem[]): string {
@@ -45,6 +53,17 @@ let latestNormalizedProjects: NormalizedProject[] = [];
 let latestProjectEvaluations: ProjectEvaluation[] = [];
 let latestPortfolioEvaluation: PortfolioEvaluation | null = null;
 let latestEvaluationsMeta: EvaluationCacheMeta | null = null;
+let evaluationCacheWriteQueue: Promise<void> = Promise.resolve();
+
+function getLatestEvaluationSnapshot(): EvaluationSnapshot {
+  return {
+    importReport: lastImportReport,
+    normalizedProjects: latestNormalizedProjects,
+    projectEvaluations: latestProjectEvaluations,
+    portfolioEvaluation: latestPortfolioEvaluation,
+    evaluationsMeta: latestEvaluationsMeta
+  };
+}
 
 export function getLastImportReport(): ImportValidationReport | null {
   return lastImportReport;
@@ -432,9 +451,10 @@ async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
   }
 }
 
-export async function saveEvaluationsToDisk(
+async function saveEvaluationSnapshotToDisk(
   projects: Project[],
-  assessmentDate: Date
+  assessmentDate: Date,
+  snapshot: EvaluationSnapshot
 ): Promise<void> {
   if (!projects || projects.length === 0) {
     // Under Rule 5: do not overwrite valid cached data with empty data
@@ -444,7 +464,7 @@ export async function saveEvaluationsToDisk(
   try {
     const signature = buildProjectEvaluationSignature(projects);
     const dictSignature = buildIndicatorDictionarySignature(getIndicatorDictionary());
-    const meta: EvaluationCacheMeta = {
+    const meta: EvaluationCacheMeta = snapshot.evaluationsMeta || {
       assessmentDate: assessmentDate.toISOString(),
       projectSignature: signature,
       indicatorDictionarySignature: dictSignature,
@@ -452,13 +472,12 @@ export async function saveEvaluationsToDisk(
       generatedAt: new Date().toISOString(),
       methodologyVersion: COMPLETENESS_METHODOLOGY_VERSION
     };
-    latestEvaluationsMeta = meta;
 
     await fs.ensureDir(DATA_DIR);
-    await writeJsonAtomic(EVALUATIONS_FILE, latestProjectEvaluations);
-    await writeJsonAtomic(PORTFOLIO_EVAL_FILE, latestPortfolioEvaluation);
-    await writeJsonAtomic(NORMALIZED_PROJECTS_FILE, latestNormalizedProjects);
-    await writeJsonAtomic(SHEETS_IMPORT_REPORT_FILE, lastImportReport);
+    await writeJsonAtomic(EVALUATIONS_FILE, snapshot.projectEvaluations);
+    await writeJsonAtomic(PORTFOLIO_EVAL_FILE, snapshot.portfolioEvaluation);
+    await writeJsonAtomic(NORMALIZED_PROJECTS_FILE, snapshot.normalizedProjects);
+    await writeJsonAtomic(SHEETS_IMPORT_REPORT_FILE, snapshot.importReport);
     await writeJsonAtomic(EVALUATIONS_META_FILE, meta);
 
     // Keep legacy projects.json in sync so fallback works without Sheets
@@ -469,6 +488,37 @@ export async function saveEvaluationsToDisk(
   } catch (err) {
     console.error("[GoogleSheets-Cache] Failed to save evaluations to disk:", err);
   }
+}
+
+export function saveEvaluationsToDisk(
+  projects: Project[],
+  assessmentDate: Date,
+  snapshot: EvaluationSnapshot = getLatestEvaluationSnapshot()
+): Promise<void> {
+  const snapshotToSave: EvaluationSnapshot = {
+    ...snapshot,
+    evaluationsMeta: {
+      assessmentDate: assessmentDate.toISOString(),
+      projectSignature: buildProjectEvaluationSignature(projects),
+      indicatorDictionarySignature: buildIndicatorDictionarySignature(getIndicatorDictionary()),
+      projectIds: projects.map(p => String(p.projectId || p.id || "")),
+      generatedAt: new Date().toISOString(),
+      methodologyVersion: COMPLETENESS_METHODOLOGY_VERSION
+    }
+  };
+
+  if (
+    latestProjectEvaluations === snapshot.projectEvaluations &&
+    latestNormalizedProjects === snapshot.normalizedProjects
+  ) {
+    latestEvaluationsMeta = snapshotToSave.evaluationsMeta;
+  }
+
+  const writeOperation = evaluationCacheWriteQueue.then(() =>
+    saveEvaluationSnapshotToDisk(projects, assessmentDate, snapshotToSave)
+  );
+  evaluationCacheWriteQueue = writeOperation.catch(() => undefined);
+  return writeOperation;
 }
 
 export function reconstructNormalizedProjectsFromLegacy(
@@ -566,7 +616,7 @@ export function reconstructNormalizedProjectsFromLegacy(
 export async function restoreOrCalculateEvaluations(
   projects: Project[],
   assessmentDate: Date = new Date()
-): Promise<void> {
+): Promise<EvaluationSnapshot> {
   // If projects list is empty, reset RAM but do NOT write/overwrite disk cache (preserve existing cache)
   if (!projects || projects.length === 0) {
     console.log("[GoogleSheets-Cache] No projects provided. Resetting RAM evaluations (preserving disk cache).");
@@ -575,17 +625,18 @@ export async function restoreOrCalculateEvaluations(
     latestNormalizedProjects = [];
     lastImportReport = null;
     latestEvaluationsMeta = null;
-    return;
+    return getLatestEvaluationSnapshot();
   }
 
   // If RAM is already set and is valid for projects & assessmentDate, nothing to do
   if (isStateValid(projects, assessmentDate, latestEvaluationsMeta, latestProjectEvaluations)) {
     console.log("[GoogleSheets-Cache] RAM evaluations are already valid and matched with projects.");
-    return;
+    return getLatestEvaluationSnapshot();
   }
 
   // Otherwise, try to load from persistent cache on disk and check its metadata
   let diskLoaded = false;
+  let resultSnapshot: EvaluationSnapshot | null = null;
   try {
     const evExists = await fs.pathExists(EVALUATIONS_FILE);
     const portExists = await fs.pathExists(PORTFOLIO_EVAL_FILE);
@@ -608,6 +659,13 @@ export async function restoreOrCalculateEvaluations(
         latestNormalizedProjects = normTemp;
         lastImportReport = reportTemp;
         latestEvaluationsMeta = metaTemp;
+        resultSnapshot = {
+          importReport: reportTemp,
+          normalizedProjects: normTemp,
+          projectEvaluations: evTemp,
+          portfolioEvaluation: portTemp,
+          evaluationsMeta: metaTemp
+        };
         diskLoaded = true;
         console.log("[GoogleSheets-Cache] Successfully restored valid evaluations and normalized projects from disk cache.");
       } else {
@@ -637,12 +695,27 @@ export async function restoreOrCalculateEvaluations(
 
       console.log("[GoogleSheets-Cache] Successfully recalculated evaluations from projects.");
       const finalProjects = normalized.map(toLegacyProjectView);
-      await saveEvaluationsToDisk(finalProjects, assessmentDate);
+      resultSnapshot = {
+        importReport: lastImportReport,
+        normalizedProjects: normalized,
+        projectEvaluations: evaluations,
+        portfolioEvaluation: latestPortfolioEvaluation,
+        evaluationsMeta: null
+      };
+      await saveEvaluationsToDisk(finalProjects, assessmentDate, resultSnapshot);
     } catch (calcErr) {
       console.error("[GoogleSheets-Cache] Critical failure while recalculating evaluations from projects list:", calcErr);
-      if (!latestProjectEvaluations) latestProjectEvaluations = [];
+      resultSnapshot = {
+        importReport: null,
+        normalizedProjects: [],
+        projectEvaluations: [],
+        portfolioEvaluation: null,
+        evaluationsMeta: null
+      };
     }
   }
+
+  return resultSnapshot || getLatestEvaluationSnapshot();
 }
 
 export function resetLatestEvaluationsForTesting(): void {

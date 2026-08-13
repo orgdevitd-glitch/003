@@ -158,6 +158,32 @@ async function main() {
       assert(evaluations[0].monitoring.status === "overdue", `Expected status overdue on 2026-06-30, got ${evaluations[0].monitoring.status}`);
     });
 
+    await runTest("Concurrent assessment dates return isolated evaluation snapshots", async () => {
+      resetLatestEvaluationsForTesting();
+
+      const [januarySnapshot, juneSnapshot] = await Promise.all([
+        restoreOrCalculateEvaluations(mockProjects, new Date("2026-01-05")),
+        restoreOrCalculateEvaluations(mockProjects, new Date("2026-06-30"))
+      ]);
+
+      assert(
+        januarySnapshot.projectEvaluations[0]?.assessmentDate.startsWith("2026-01-05"),
+        `January request must retain its own date, got ${januarySnapshot.projectEvaluations[0]?.assessmentDate}`
+      );
+      assert(
+        januarySnapshot.projectEvaluations[0]?.monitoring.status === "ok",
+        `January request must retain status ok, got ${januarySnapshot.projectEvaluations[0]?.monitoring.status}`
+      );
+      assert(
+        juneSnapshot.projectEvaluations[0]?.assessmentDate.startsWith("2026-06-30"),
+        `June request must retain its own date, got ${juneSnapshot.projectEvaluations[0]?.assessmentDate}`
+      );
+      assert(
+        juneSnapshot.projectEvaluations[0]?.monitoring.status === "overdue",
+        `June request must retain status overdue, got ${juneSnapshot.projectEvaluations[0]?.monitoring.status}`
+      );
+    });
+
     // Scenario B: restart + stale disk cache by assessmentDate
     await runTest("Scenario B: restart + stale disk cache by assessmentDate -> ignores cache and recalculates", async () => {
       // 1. Force state to be evaluated for 2026-01-05 and saved to disk
