@@ -120,6 +120,110 @@ runTest("Quarter Status Definitions", () => {
   assert(q3Status === "future", `2026 Q3 must be future relative to 2026-06-15. Obtained: ${q3Status}`);
 });
 
+runTest("Applicable Quarters Respect Project Date Boundaries", () => {
+  const applicable = getApplicableQuarters(
+    new Date("2026-04-01T00:00:00Z"),
+    new Date("2026-09-30T00:00:00Z"),
+    [2026]
+  );
+
+  assertDeepEqual(
+    applicable,
+    [
+      { year: 2026, quarter: "Q2" },
+      { year: 2026, quarter: "Q3" }
+    ],
+    "Only quarters overlapping the project lifecycle should be applicable"
+  );
+  assertDeepEqual(
+    getApplicableQuarters(null, new Date("2026-09-30T00:00:00Z"), [2026]),
+    [],
+    "A project without a start date must not have applicable quarters"
+  );
+});
+
+runTest("Quarter Applicability Gates Indicator Fact Requirements", () => {
+  const headers = [
+    "ID", "Название", "Цели проекта", "Образы результатов", "Дата начала", "Дата завершения",
+    "Стадия", "Вид", "Приоритет",
+    "Показатели проекта 2026 Q1", "План Показатели проекта 2026 Q1", "Факт Показатели проекта 2026 Q1",
+    "Показатели проекта 2026 Q2", "План Показатели проекта 2026 Q2", "Факт Показатели проекта 2026 Q2",
+    "Показатели проекта 2026 Q4", "План Показатели проекта 2026 Q4", "Факт Показатели проекта 2026 Q4"
+  ];
+  const baseRow = {
+    "Название": "Проверка применимости кварталов",
+    "Цели проекта": "Проверить квартальную валидацию",
+    "Образы результатов": "Корректный отчет",
+    "Вид": "Проект",
+    "Приоритет": "1"
+  };
+  const rows: Record<string, string>[] = [
+    {
+      ...baseRow,
+      "ID": "401",
+      "Дата начала": "01.01.2026",
+      "Дата завершения": "31.03.2026",
+      "Стадия": "Завершен",
+      "Показатели проекта 2026 Q1": "Прошедший показатель",
+      "План Показатели проекта 2026 Q1": "100",
+      "Факт Показатели проекта 2026 Q1": "",
+      "Показатели проекта 2026 Q4": "Показатель вне периода",
+      "План Показатели проекта 2026 Q4": "",
+      "Факт Показатели проекта 2026 Q4": ""
+    },
+    {
+      ...baseRow,
+      "ID": "402",
+      "Дата начала": "01.04.2026",
+      "Дата завершения": "30.06.2026",
+      "Стадия": "В работе",
+      "Показатели проекта 2026 Q2": "Текущий показатель",
+      "План Показатели проекта 2026 Q2": "100",
+      "Факт Показатели проекта 2026 Q2": ""
+    },
+    {
+      ...baseRow,
+      "ID": "403",
+      "Дата начала": "01.04.2026",
+      "Дата завершения": "30.06.2026",
+      "Стадия": "Планируется",
+      "Показатели проекта 2026 Q2": "Плановый показатель",
+      "План Показатели проекта 2026 Q2": "100",
+      "Факт Показатели проекта 2026 Q2": ""
+    }
+  ];
+
+  const report = validateProjectRows(rows, headers, {
+    assessmentDate: new Date("2026-06-15T00:00:00Z"),
+    detectedYears: [2026]
+  });
+  const issueCodesFor = (projectId: string) =>
+    report.issues.filter(issue => issue.projectId === projectId).map(issue => issue.code);
+
+  const pastQuarterCodes = issueCodesFor("401");
+  assert(
+    pastQuarterCodes.includes("INDICATOR_FACT_PAST_MISSING"),
+    "An applicable past quarter must require indicator facts"
+  );
+  assert(
+    pastQuarterCodes.includes("INDICATOR_DATA_NOT_APPLICABLE"),
+    "Filled indicator data outside the project lifecycle must be reported"
+  );
+  assert(
+    !pastQuarterCodes.includes("INDICATOR_PLAN_MISSING"),
+    "An out-of-lifecycle quarter must not trigger applicable-quarter plan requirements"
+  );
+
+  assert(
+    issueCodesFor("402").includes("INDICATOR_FACT_CURRENT_MISSING"),
+    "An active project must warn when the current quarter fact is missing"
+  );
+  assert(
+    !issueCodesFor("403").includes("INDICATOR_FACT_CURRENT_MISSING"),
+    "A planned project must allow an empty current-quarter fact"
+  );
+});
+
 // 4. Batch Row Validator Controls
 runTest("Full Rows Processing and Validation", () => {
   const headers = [
