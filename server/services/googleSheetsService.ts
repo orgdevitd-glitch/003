@@ -5,8 +5,20 @@ import path from "path";
 import crypto from "crypto";
 import { Project, ProjectTask, ProjectIndicator, ProjectStatus, TaskStatus } from "../../src/types";
 import { getGoogleSheetsConfig } from "./envHelper";
-import { validateProjectRows, ImportValidationReport } from "./dataValidation";
-import { normalizeProjectRows, NormalizedProject } from "./projectNormalizer";
+import {
+  getApplicableQuarters,
+  getQuarterPeriod,
+  getQuarterStatus,
+  validateProjectRows,
+  ImportValidationReport
+} from "./dataValidation";
+import {
+  normalizeProjectRows,
+  ApplicableQuarter,
+  NormalizedIndicator,
+  NormalizedMilestone,
+  NormalizedProject
+} from "./projectNormalizer";
 import { toLegacyProjectView } from "./projectViewAdapter";
 import { analyzeSheetColumns, normalizeHeaderName, normalizeRowKeys } from "./dataContract";
 import { evaluateProjects, calculatePortfolioEvaluation, ProjectEvaluation, PortfolioEvaluation } from "./projectEvaluationService";
@@ -339,11 +351,23 @@ export function buildProjectEvaluationSignature(projects: Project[]): string {
       department: Array.isArray(p.department) ? p.department.join(";") : (Array.isArray(proj.organization?.departments) ? proj.organization?.departments.join(";") : String(p.department || "")),
       milestones: Array.isArray(p.milestones) ? p.milestones.map(m => ({
         taskId: m.taskId,
+        title: m.title,
         status: m.status,
         quarter: m.quarter,
         weight: m.weight,
         progressPercent: m.progressPercent,
         isMilestone: m.isMilestone
+      })) : null,
+      tasks: Array.isArray(p.tasks) ? p.tasks.map(t => ({
+        taskId: t.taskId,
+        title: t.title,
+        status: t.status,
+        quarter: t.quarter,
+        deadlineAt: t.deadlineAt,
+        completedAt: t.completedAt,
+        weight: t.weight,
+        progressPercent: t.progressPercent,
+        isMilestone: t.isMilestone
       })) : null,
       indicators: Array.isArray(p.indicators) ? p.indicators.map(i => ({
         indicatorId: i.indicatorId,
@@ -471,6 +495,198 @@ export async function saveEvaluationsToDisk(
   }
 }
 
+type StructuredPeriod = {
+  year: number;
+  quarter: "Q1" | "Q2" | "Q3" | "Q4";
+};
+
+function quarterForMonth(month: number): StructuredPeriod["quarter"] {
+  return `Q${Math.floor(month / 3) + 1}` as StructuredPeriod["quarter"];
+}
+
+function parseStructuredPeriod(
+  rawPeriod: unknown,
+  rawDate: unknown,
+  fallbackDate: Date,
+  fallbackYear: number
+): StructuredPeriod {
+  const period = String(rawPeriod || "").toUpperCase();
+  const quarterMatch = period.match(/\bQ([1-4])\b/);
+  const yearMatch = period.match(/\b((?:19|20)\d{2})\b/);
+
+  const parsedDate = rawDate ? new Date(String(rawDate)) : null;
+  const hasValidDate = parsedDate !== null && !Number.isNaN(parsedDate.getTime());
+  const year = yearMatch
+    ? Number(yearMatch[1])
+    : hasValidDate
+      ? parsedDate.getUTCFullYear()
+      : fallbackYear;
+  const quarter = quarterMatch
+    ? `Q${quarterMatch[1]}` as StructuredPeriod["quarter"]
+    : hasValidDate
+      ? quarterForMonth(parsedDate.getUTCMonth())
+      : quarterForMonth(fallbackDate.getUTCMonth());
+
+  return { year, quarter };
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getStructuredMilestones(project: Project): ProjectTask[] {
+  const byId = new Map<string, ProjectTask>();
+  const candidates = [
+    ...(Array.isArray(project.milestones) ? project.milestones : []),
+    ...(Array.isArray(project.tasks) ? project.tasks.filter(task => task.isMilestone) : [])
+  ];
+
+  candidates.forEach((task, index) => {
+    if (!task || !String(task.title || "").trim()) return;
+    const key = String(task.taskId || `${task.title}-${task.quarter || ""}-${index}`);
+    if (!byId.has(key)) byId.set(key, task);
+  });
+
+  return Array.from(byId.values());
+}
+
+function enrichWithStructuredProjectData(
+  normalized: NormalizedProject,
+  project: Project,
+  assessmentDate: Date
+): NormalizedProject {
+  const structuredMilestones = getStructuredMilestones(project);
+  const structuredIndicators = Array.isArray(project.indicators)
+    ? project.indicators.filter(indicator => indicator && String(indicator.name || "").trim())
+    : [];
+
+  if (
+    (normalized.milestones.length > 0 || structuredMilestones.length === 0) &&
+    (normalized.indicators.length > 0 || structuredIndicators.length === 0)
+  ) {
+    return normalized;
+  }
+
+  const projectDate = project.startDate || project.createdAt || project.endDate || project.deadlineAt;
+  const parsedProjectDate = projectDate ? new Date(projectDate) : null;
+  const fallbackYear = Number.isInteger(project._dataYear)
+    ? project._dataYear as number
+    : parsedProjectDate && !Number.isNaN(parsedProjectDate.getTime())
+      ? parsedProjectDate.getUTCFullYear()
+      : assessmentDate.getUTCFullYear();
+
+  const milestonePeriods = structuredMilestones.map(task =>
+    parseStructuredPeriod(
+      task.quarter,
+      task.deadlineAt || task.completedAt || task.createdAt,
+      assessmentDate,
+      fallbackYear
+    )
+  );
+  const indicatorPeriods = structuredIndicators.map(indicator =>
+    parseStructuredPeriod(indicator.period, null, assessmentDate, fallbackYear)
+  );
+  const detectedYears = Array.from(new Set([
+    ...normalized.source.detectedYears,
+    ...milestonePeriods.map(period => period.year),
+    ...indicatorPeriods.map(period => period.year)
+  ])).sort((a, b) => a - b);
+
+  const startDate = normalized.baseInfo.startDate ? new Date(normalized.baseInfo.startDate) : null;
+  const endDate = normalized.baseInfo.endDate ? new Date(normalized.baseInfo.endDate) : null;
+  const validStartDate = startDate && !Number.isNaN(startDate.getTime()) ? startDate : null;
+  const validEndDate = endDate && !Number.isNaN(endDate.getTime()) ? endDate : null;
+  const applicable = getApplicableQuarters(validStartDate, validEndDate, detectedYears);
+  const applicableKeys = new Set(applicable.map(item => `${item.year}-${item.quarter}`));
+
+  normalized.source.detectedYears = detectedYears;
+  normalized.applicableQuarters = detectedYears.flatMap(year =>
+    (["Q1", "Q2", "Q3", "Q4"] as const).map(quarter => {
+      const { start, end } = getQuarterPeriod(year, quarter);
+      return {
+        year,
+        quarter,
+        startDate: start.toISOString().split("T")[0],
+        endDate: end.toISOString().split("T")[0],
+        status: getQuarterStatus(year, quarter, assessmentDate),
+        isApplicable: applicableKeys.has(`${year}-${quarter}`)
+      } satisfies ApplicableQuarter;
+    })
+  );
+
+  if (normalized.milestones.length === 0) {
+    normalized.milestones = structuredMilestones.map((task, index) => {
+      const period = milestonePeriods[index];
+      const progress = finiteNumber(task.progressPercent);
+      const derivedProgress = progress !== null
+        ? progress
+        : task.status === "Завершена"
+          ? 100
+          : task.status === "Ждёт выполнения"
+            ? 0
+            : null;
+
+      return {
+        id: String(task.taskId || `M-${normalized.projectId}-${index + 1}`),
+        year: period.year,
+        quarter: period.quarter,
+        name: String(task.title).trim(),
+        progressPercent: derivedProgress,
+        weightPercent: finiteNumber(task.weight),
+        periodStatus: getQuarterStatus(period.year, period.quarter, assessmentDate),
+        isApplicableQuarter: applicableKeys.has(`${period.year}-${period.quarter}`),
+        sourceColumns: {
+          name: "milestones.title",
+          progress: "milestones.progressPercent",
+          weight: "milestones.weight"
+        }
+      } satisfies NormalizedMilestone;
+    });
+  }
+
+  if (normalized.indicators.length === 0) {
+    normalized.indicators = structuredIndicators.map((indicator, index) => {
+      const period = indicatorPeriods[index];
+      const plan = finiteNumber(indicator.planValue);
+      const fact = finiteNumber(indicator.factValue);
+      const periodStatus = getQuarterStatus(period.year, period.quarter, assessmentDate);
+      const isApplicableQuarter = applicableKeys.has(`${period.year}-${period.quarter}`);
+      let factStatus: NormalizedIndicator["factStatus"] = "not_applicable";
+
+      if (isApplicableQuarter) {
+        if (fact !== null) {
+          factStatus = "filled";
+        } else if (periodStatus === "past") {
+          factStatus = "missing_required";
+        } else {
+          factStatus = "empty_future";
+        }
+      }
+
+      return {
+        id: String(indicator.indicatorId || `IND-${normalized.projectId}-${index + 1}`),
+        year: period.year,
+        quarter: period.quarter,
+        name: String(indicator.name).trim(),
+        plan,
+        fact,
+        periodStatus,
+        isApplicableQuarter,
+        factStatus,
+        sourceColumns: {
+          name: "indicators.name",
+          plan: "indicators.planValue",
+          fact: "indicators.factValue"
+        }
+      } satisfies NormalizedIndicator;
+    });
+  }
+
+  return normalized;
+}
+
 export function reconstructNormalizedProjectsFromLegacy(
   legacyProjects: Project[],
   assessmentDate: Date = new Date()
@@ -560,7 +776,9 @@ export function reconstructNormalizedProjectsFromLegacy(
     columnAnalysis
   });
 
-  return normalized;
+  return normalized.map((project, index) =>
+    enrichWithStructuredProjectData(project, legacyProjects[index], assessmentDate)
+  );
 }
 
 export async function restoreOrCalculateEvaluations(
