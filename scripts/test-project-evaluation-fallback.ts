@@ -103,7 +103,8 @@ async function main() {
       getLatestNormalizedProjects,
       resetLatestEvaluationsForTesting,
       buildProjectEvaluationSignature,
-      buildIndicatorDictionarySignature
+      buildIndicatorDictionarySignature,
+      reconstructNormalizedProjectsFromLegacy
     } = await import("../server/services/googleSheetsService");
 
     const {
@@ -117,6 +118,68 @@ async function main() {
     const PORTFOLIO_EVAL_FILE = path.join(TEST_DATA_DIR, "portfolio-evaluation.json");
     const NORMALIZED_PROJECTS_FILE = path.join(TEST_DATA_DIR, "normalized-projects.json");
     const EVALUATIONS_META_FILE = path.join(TEST_DATA_DIR, "evaluations-meta.json");
+
+    await runTest("Bitrix structured tasks and indicators survive fallback reconstruction", async () => {
+      const bitrixProject: any = {
+        projectId: "B-101",
+        projectName: "Structured Bitrix Project",
+        source: "bitrix24",
+        stage: "active",
+        status: "active",
+        createdAt: "2026-05-05T15:09:00+03:00",
+        deadlineAt: "2026-05-29T23:30:00+03:00",
+        tasks: [
+          {
+            taskId: "T-1",
+            title: "Completed milestone",
+            status: "Завершена",
+            quarter: "2026-Q2",
+            weight: 40,
+            progressPercent: 100,
+            isMilestone: true
+          },
+          {
+            taskId: "T-2",
+            title: "Active milestone",
+            status: "Выполняется",
+            deadlineAt: "2026-05-22T23:30:00+03:00",
+            weight: 60,
+            progressPercent: 50,
+            isMilestone: true
+          }
+        ],
+        milestones: [],
+        indicators: [
+          {
+            indicatorId: "I-1",
+            name: "Structured KPI",
+            planValue: 10,
+            factValue: 4,
+            period: "Q2 2026"
+          }
+        ]
+      };
+      const assessmentDate = new Date("2026-05-20T00:00:00Z");
+
+      const [normalized] = reconstructNormalizedProjectsFromLegacy([bitrixProject], assessmentDate);
+      assert(normalized.milestones.length === 2, "Structured milestone tasks must be reconstructed");
+      assert(normalized.milestones.every(m => m.year === 2026 && m.quarter === "Q2"), "Milestone periods must be retained");
+      assert(normalized.indicators.length === 1, "Structured indicators must be reconstructed");
+      assert(normalized.indicators[0].plan === 10 && normalized.indicators[0].fact === 4, "Indicator values must be retained");
+
+      resetLatestEvaluationsForTesting();
+      await restoreOrCalculateEvaluations([bitrixProject], assessmentDate);
+      const evaluation = getLatestProjectEvaluations()[0];
+      assert(evaluation.milestones.milestonesCount === 2, "Fallback evaluation must include Bitrix milestones");
+      assert(evaluation.indicators.indicatorResults.length === 1, "Fallback evaluation must include Bitrix indicators");
+
+      const changedTaskProject = JSON.parse(JSON.stringify(bitrixProject));
+      changedTaskProject.tasks[1].progressPercent = 75;
+      assert(
+        buildProjectEvaluationSignature([bitrixProject]) !== buildProjectEvaluationSignature([changedTaskProject]),
+        "Task progress changes must invalidate the evaluation cache"
+      );
+    });
 
     // 1. Scenario: RAM is empty, cache doesn't exist, projects are present.
     // Expectation: Evaluations are calculated, stored in cache and RAM is not empty.
