@@ -185,7 +185,8 @@ async function startServer() {
     if (token) {
       activeSessions.delete(token);
     }
-    res.setHeader("Set-Cookie", "session=; HttpOnly; SameSite=None; Secure; Path=/; Max-Age=0");
+    revokeAdvancedAccessSession(req, res);
+    res.append("Set-Cookie", "session=; HttpOnly; SameSite=None; Secure; Path=/; Max-Age=0");
     return res.json({ success: true });
   });
 
