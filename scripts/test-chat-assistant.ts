@@ -50,7 +50,7 @@ function clientThatMustNotBeUsed(): ChatClient {
     get beta() {
       throw new Error("OpenAI client must not be used for rejected input");
     }
-  } as ChatClient;
+  } as unknown as ChatClient;
 }
 
 async function main() {
