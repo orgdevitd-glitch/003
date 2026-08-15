@@ -232,6 +232,12 @@ async function main() {
       }
     });
 
+    testApp.post("/api/auth/logout", (req, res) => {
+      revokeAdvancedAccessSession(req, res);
+      res.append("Set-Cookie", "session=; HttpOnly; SameSite=None; Secure; Path=/; Max-Age=0");
+      return res.json({ success: true });
+    });
+
     testApp.get("/api/projects", (req, res) => {
       const assessmentModeQuery = req.query.assessmentMode;
 
@@ -339,6 +345,32 @@ async function main() {
         });
         const statusData = await statusRes.json();
         assert(statusData.active === false, "Status should be inactive after revocation");
+      });
+
+      await runTestAsync("Server 4b. Main logout revokes advanced access and clears both cookies", async () => {
+        const verifyRes = await fetch(`${baseUrl}/api/advanced-access/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: "correct-password" })
+        });
+        const advancedCookie = verifyRes.headers.get("set-cookie") || "";
+        assert(advancedCookie.includes("advanced_access_session="), "Advanced session cookie must be set");
+
+        const logoutRes = await fetch(`${baseUrl}/api/auth/logout`, {
+          method: "POST",
+          headers: { "Cookie": advancedCookie }
+        });
+        assert(logoutRes.status === 200, `Expected 200, got ${logoutRes.status}`);
+
+        const clearedCookies = logoutRes.headers.get("set-cookie") || "";
+        assert(clearedCookies.includes("advanced_access_session="), "Logout must clear advanced session cookie");
+        assert(clearedCookies.includes("session="), "Logout must clear main session cookie");
+
+        const statusRes = await fetch(`${baseUrl}/api/advanced-access/status`, {
+          headers: { "Cookie": advancedCookie }
+        });
+        const statusData = await statusRes.json();
+        assert(statusData.active === false, "Advanced access must be inactive after main logout");
       });
 
       // 5. После истечения TTL status возвращает active false
