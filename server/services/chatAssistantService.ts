@@ -13,6 +13,12 @@ export interface ChatAssistantMessageResponse {
   error?: string;
 }
 
+export interface ChatAssistantDependencies {
+  client?: Pick<OpenAI, "beta">;
+  wait?: (milliseconds: number) => Promise<void>;
+  maxPollingAttempts?: number;
+}
+
 export function getChatAssistantStatus() {
   const enabled = isEnabled(process.env.CHAT_ASSISTANT_ENABLED);
   const assistantId = cleanEnv(process.env.CHAT_ASSISTANT_ID) || null;
@@ -28,7 +34,10 @@ export function getChatAssistantStatus() {
   };
 }
 
-export async function handleChatAssistantMessage(input: ChatAssistantMessageInput): Promise<ChatAssistantMessageResponse> {
+export async function handleChatAssistantMessage(
+  input: ChatAssistantMessageInput,
+  dependencies: ChatAssistantDependencies = {}
+): Promise<ChatAssistantMessageResponse> {
   const status = getChatAssistantStatus();
 
   console.log("[ChatAssistant-Diagnose] Checking environment variables configuration:");
@@ -82,7 +91,9 @@ export async function handleChatAssistantMessage(input: ChatAssistantMessageInpu
   }
 
   try {
-    const openai = new OpenAI({ apiKey: cleanEnv(process.env.OPENAI_API_KEY) });
+    const openai = dependencies.client || new OpenAI({ apiKey: cleanEnv(process.env.OPENAI_API_KEY) });
+    const wait = dependencies.wait || ((milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+    const maxPollingAttempts = dependencies.maxPollingAttempts ?? 50;
 
     // Thread creation or recovery
     let threadId = input.threadId?.trim();
@@ -114,10 +125,10 @@ export async function handleChatAssistantMessage(input: ChatAssistantMessageInpu
     let attempts = 0;
     while (["queued", "in_progress", "cancelling"].includes(run.status)) {
       attempts++;
-      if (attempts > 50) { // Limit polling for ~40 seconds maximum
+      if (attempts > maxPollingAttempts) { // Default limit is ~40 seconds
         throw new Error("Timeout waiting for Assistant response");
       }
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await wait(800);
       run = await openai.beta.threads.runs.retrieve(run.id, { thread_id: threadId });
     }
 
