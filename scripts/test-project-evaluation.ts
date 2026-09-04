@@ -522,6 +522,69 @@ runTest("Scenario 13: Portfolio aggregation logic", () => {
   assert(port.averageIndicatorPerformancePercent === 90, "Avg KPI performance 90%");
 });
 
+// 14. Ошибки импорта должны влиять на качество данных и агрегаты портфеля
+runTest("Scenario 14: Import issue severity and portfolio quarantine", () => {
+  const warningProject = createMockProject({ baseInfo: { title: "Проект с предупреждением импорта" } });
+  const warningEvaluation = evaluateProject(warningProject, {
+    assessmentDate: new Date("2026-01-20"),
+    importIssuesByProjectId: {
+      "MOCK-1": [{
+        severity: "warning",
+        rowIndex: 2,
+        projectId: "MOCK-1",
+        projectName: "Проект с предупреждением импорта",
+        field: "Команда проекта",
+        code: "LIST_FORMAT_SEPARATOR_WARNING",
+        message: "Список разделен запятыми"
+      }]
+    }
+  });
+
+  assert(warningEvaluation.dataQuality.status === "warning", "Import warning must downgrade data quality to warning");
+  assert(warningEvaluation.dataQuality.errorsCount === 0, "Import warning must not increment errors");
+  assert(warningEvaluation.dataQuality.warningsCount === 1, "Import warning must be counted");
+  assert(warningEvaluation.dataQuality.issuesCount === 1, "Import warning must be included in total issues");
+
+  const errorProject = createMockProject({ baseInfo: { title: "Проект с ошибкой импорта" } });
+  const errorEvaluation = evaluateProject(errorProject, {
+    assessmentDate: new Date("2026-01-20"),
+    importIssuesByProjectId: {
+      "MOCK-1": [{
+        severity: "error",
+        rowIndex: 2,
+        projectId: "MOCK-1",
+        projectName: "Проект с ошибкой импорта",
+        field: "ID",
+        code: "DUPLICATE_ID",
+        message: "ID проекта дублируется"
+      }]
+    }
+  });
+
+  assert(errorEvaluation.dataQuality.status === "error", "Import error must set data quality to error");
+  assert(errorEvaluation.dataQuality.errorsCount === 1, "Import error must be counted");
+  assert(errorEvaluation.dataQuality.warningsCount === 0, "Import error must not increment warnings");
+  assert(errorEvaluation.dataQuality.issuesCount === 1, "Import error must be included in total issues");
+  assert(errorEvaluation.projectHealth.status === "not_enough_data", "Critical import errors must prevent a misleading health score");
+  assert(errorEvaluation.projectHealth.score === null, "Critical import errors must clear the health score");
+  assert(
+    errorEvaluation.explanations.some(e => e.includes("[Импорт] DUPLICATE_ID")),
+    "Import error details must remain available for diagnosis"
+  );
+
+  const portfolio = calculatePortfolioEvaluation(
+    [warningProject, errorProject],
+    [warningEvaluation, errorEvaluation],
+    { assessmentDate: new Date("2026-01-20") }
+  );
+
+  assert(portfolio.dataErrorCount === 1, "Portfolio must count projects with critical import errors");
+  assert(
+    portfolio.averageCompletenessPercent === warningEvaluation.dataQuality.completenessPercent,
+    "Error project must be quarantined from portfolio averages while warning project remains included"
+  );
+});
+
 // ==========================================
 // NEW MILESTONE WEIGHT MODEL PROJECTS EVALUATION TESTS
 // ==========================================
