@@ -226,16 +226,12 @@ export function isProxyConnectionTrusted(req: express.Request, config: GeoAccess
     return false;
   }
 
-  const isProd = process.env.NODE_ENV === "production";
   const connectionIp = getDirectConnectionIp(req);
 
-  // If trustedProxyIps is empty:
-  // - In production, we cannot trust headers (must be false).
-  // - In development/testing, we can allow fallback to trust if no specific proxy is configured,
-  //   or we can be strict. Let's make it strict unless it's loopback, or follow the rule:
-  //   "Если trustedProxyIps пустой, нельзя безусловно доверять proxy-заголовкам в production-режиме."
+  // Proxy headers are client-controlled unless the direct connection is from
+  // an explicitly trusted proxy. Fail closed in every environment.
   if (config.trustedProxyIps.length === 0) {
-    return !isProd; // trusted if not in production
+    return false;
   }
 
   return isIpTrusted(connectionIp, config.trustedProxyIps);
