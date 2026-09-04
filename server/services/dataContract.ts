@@ -112,6 +112,24 @@ export function normalizeHeaderName(header: string, index?: number): string {
   return trimmed;
 }
 
+export function findNormalizedHeaderCollisions(headers: string[]): Record<string, string[]> {
+  const sourcesByNormalizedHeader = new Map<string, string[]>();
+
+  for (let index = 0; index < headers.length; index++) {
+    const rawHeader = headers[index];
+    const normalizedHeader = normalizeHeaderName(rawHeader, index);
+    if (!normalizedHeader) continue;
+
+    const sources = sourcesByNormalizedHeader.get(normalizedHeader) || [];
+    sources.push(rawHeader);
+    sourcesByNormalizedHeader.set(normalizedHeader, sources);
+  }
+
+  return Object.fromEntries(
+    Array.from(sourcesByNormalizedHeader.entries()).filter(([, sources]) => sources.length > 1)
+  );
+}
+
 export function normalizeRowKeys(row: Record<string, string>, rawHeaders?: string[]): Record<string, string> {
   if (!row) return {};
   const normalized: Record<string, string> = {};

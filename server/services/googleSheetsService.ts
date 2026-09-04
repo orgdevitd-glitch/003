@@ -8,7 +8,7 @@ import { getGoogleSheetsConfig } from "./envHelper";
 import { validateProjectRows, ImportValidationReport } from "./dataValidation";
 import { normalizeProjectRows, NormalizedProject } from "./projectNormalizer";
 import { toLegacyProjectView } from "./projectViewAdapter";
-import { analyzeSheetColumns, normalizeHeaderName, normalizeRowKeys } from "./dataContract";
+import { analyzeSheetColumns, findNormalizedHeaderCollisions, normalizeHeaderName, normalizeRowKeys } from "./dataContract";
 import { evaluateProjects, calculatePortfolioEvaluation, ProjectEvaluation, PortfolioEvaluation } from "./projectEvaluationService";
 import { getIndicatorDictionary, IndicatorDictionaryItem } from "./indicatorDictionary";
 
@@ -207,6 +207,12 @@ export async function fetchProjectsFromSheet(assessmentDate: Date = new Date()):
   const rawHeaders = results.meta.fields || [];
   const parsedHeaders = rawHeaders.map((h, idx) => normalizeHeaderName(h, idx));
   const rawRowsCount = (results.data || []).length;
+  const headerCollisions = findNormalizedHeaderCollisions(rawHeaders);
+  if (Object.keys(headerCollisions).length > 0) {
+    throw new Error(
+      `Conflicting Google Sheets columns normalize to the same field: ${JSON.stringify(headerCollisions)}`
+    );
+  }
   const normalizedRows = (results.data as Record<string, string>[] || []).map(row => normalizeRowKeys(row, rawHeaders));
 
   console.log(`- Parsed csv. Row count: ${rawRowsCount}, Original headers found: ${JSON.stringify(rawHeaders)}, Normalized headers: ${JSON.stringify(parsedHeaders)}`);
