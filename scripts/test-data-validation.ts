@@ -1,4 +1,4 @@
-import { analyzeSheetColumns, BASE_COLUMNS } from "../server/services/dataContract";
+import { analyzeSheetColumns, BASE_COLUMNS, findNormalizedHeaderCollisions } from "../server/services/dataContract";
 import { 
   splitListCell, 
   parseDateCell, 
@@ -65,6 +65,20 @@ runTest("Missing Base Column Test", () => {
   const res = analyzeSheetColumns(incompleteHeaders);
   assert(res.structureStatus === "error" || res.structureStatus === "warning", "Status should not be ok");
   assert(res.missingBaseColumns.includes("Цели проекта"), "Should identify missing base columns");
+});
+
+runTest("Aliased header collisions are detected", () => {
+  const collisions = findNormalizedHeaderCollisions([
+    "ID",
+    "ID проекта",
+    "Название",
+    "Название проекта"
+  ]);
+
+  assertDeepEqual(collisions, {
+    "ID": ["ID", "ID проекта"],
+    "Название": ["Название", "Название проекта"]
+  }, "Aliased headers must not silently overwrite one another");
 });
 
 // 2. Parser Unit Tests

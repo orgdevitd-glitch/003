@@ -217,6 +217,15 @@ export default function App() {
     checkAuthStatus();
   }, []);
 
+  // Chat history can contain project-sensitive context and must not survive an
+  // authentication boundary on shared browsers.
+  useEffect(() => {
+    if (isAuthenticated === false) {
+      sessionStorage.removeItem('chat_assistant_messages');
+      sessionStorage.removeItem('chat_assistant_thread_id');
+    }
+  }, [isAuthenticated]);
+
   // Check and restore custom mode if advanced access is active on mount
   useEffect(() => {
     if (isAuthenticated !== true) return;

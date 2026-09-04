@@ -165,6 +165,32 @@ try {
     assert(resolvedCountry === null, `Expected country to be null due to untrusted connection IP, got ${resolvedCountry}`);
   });
 
+  runTest("3b. Empty proxy allowlist never trusts client country headers", () => {
+    writeTestConfig({
+      geoAccess: {
+        enabled: true,
+        allowedCountries: ["US"],
+        unknownCountryPolicy: "deny",
+        logDeniedRequests: false,
+        trustProxyHeaders: true,
+        trustedProxyIps: []
+      }
+    });
+
+    testDetector.setMockCountry(null);
+    const config = getGeoAccessConfig();
+    const req = createMockReq({
+      "CF-Connecting-IP": "8.8.8.8",
+      "CF-IPCountry": "US"
+    }, "/api/projects", "12.34.56.78");
+
+    const resolvedIp = getUserIp(req, config);
+    assert(resolvedIp === "12.34.56.78", `Expected direct connection IP, got ${resolvedIp}`);
+
+    const resolvedCountry = detectCountry(resolvedIp, req, config);
+    assert(resolvedCountry === null, `Expected spoofed country header to be ignored, got ${resolvedCountry}`);
+  });
+
   // Scenario 4: X-Forwarded-For is not used if proxy is not trusted
   runTest("4. X-Forwarded-For is ignored if proxy is not trusted", () => {
     writeTestConfig({
