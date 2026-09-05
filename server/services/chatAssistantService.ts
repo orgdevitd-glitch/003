@@ -4,6 +4,7 @@ import { cleanEnv, isEnabled, isValidAssistantId } from "./envHelper";
 export interface ChatAssistantMessageInput {
   message: string;
   threadId?: string;
+  sessionId: string;
 }
 
 export interface ChatAssistantMessageResponse {
@@ -11,6 +12,38 @@ export interface ChatAssistantMessageResponse {
   answer?: string;
   threadId?: string;
   error?: string;
+  forbidden?: boolean;
+}
+
+const threadOwners = new Map<string, string>();
+
+export class ChatThreadAccessError extends Error {
+  constructor() {
+    super("Chat thread does not belong to the active session");
+    this.name = "ChatThreadAccessError";
+  }
+}
+
+export function registerChatThread(threadId: string, sessionId: string): void {
+  const owner = threadOwners.get(threadId);
+  if (owner && owner !== sessionId) {
+    throw new ChatThreadAccessError();
+  }
+  threadOwners.set(threadId, sessionId);
+}
+
+export function assertChatThreadAccess(threadId: string, sessionId: string): void {
+  if (threadOwners.get(threadId) !== sessionId) {
+    throw new ChatThreadAccessError();
+  }
+}
+
+export function revokeChatThreadsForSession(sessionId: string): void {
+  for (const [threadId, owner] of threadOwners.entries()) {
+    if (owner === sessionId) {
+      threadOwners.delete(threadId);
+    }
+  }
 }
 
 export function getChatAssistantStatus() {
@@ -90,8 +123,10 @@ export async function handleChatAssistantMessage(input: ChatAssistantMessageInpu
       console.log("[ChatAssistant] No threadId provided. Creating a new thread...");
       const thread = await openai.beta.threads.create();
       threadId = thread.id;
+      registerChatThread(threadId, input.sessionId);
       console.log(`[ChatAssistant] New thread created successfully: ${threadId}`);
     } else {
+      assertChatThreadAccess(threadId, input.sessionId);
       console.log(`[ChatAssistant] Appending to existing thread: ${threadId}`);
     }
 
@@ -176,6 +211,13 @@ export async function handleChatAssistantMessage(input: ChatAssistantMessageInpu
 
   } catch (error: any) {
     console.error("[ChatAssistant] Caught exception during execution:", error);
+    if (error instanceof ChatThreadAccessError) {
+      return {
+        success: false,
+        forbidden: true,
+        error: "Эта сессия чата недоступна. Начните новый диалог."
+      };
+    }
     // Be precise about well-known OpenAI error codes
     if (error.status === 401) {
       console.error("[ChatAssistant] Authentication failed. Please check your OPENAI_API_KEY.");
