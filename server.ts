@@ -8,7 +8,7 @@ import { JsonProjectStorage } from "./server/storage/jsonProjectStorage";
 import { analyzeProjectWithOpenAI } from "./server/services/openaiAnalysisService";
 import { buildProjectAnalysisPayload } from "./server/services/projectAnalysisPayloadService";
 import { fetchProjectsFromSheet, fetchCsvFromGoogleSheets, getLastImportReport, getLatestNormalizedProjects, getLatestProjectEvaluations, getLatestPortfolioEvaluation, restoreOrCalculateEvaluations, reconstructNormalizedProjectsFromLegacy } from "./server/services/googleSheetsService";
-import { handleChatAssistantMessage, getChatAssistantStatus } from "./server/services/chatAssistantService";
+import { handleChatAssistantMessage, getChatAssistantStatus, revokeChatThreadsForSession } from "./server/services/chatAssistantService";
 import { getGoogleSheetsConfig, cleanEnv } from "./server/services/envHelper";
 import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndicatorsReport, loadIndicatorDictionaryWithTTL } from "./server/services/indicatorDictionaryService";
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
@@ -33,7 +33,10 @@ const activeSessions = new Map<string, number>();
 function pruneExpiredSessions() {
   const now = Date.now();
   for (const [token, expiresAt] of activeSessions.entries()) {
-    if (expiresAt <= now) activeSessions.delete(token);
+    if (expiresAt <= now) {
+      activeSessions.delete(token);
+      revokeChatThreadsForSession(token);
+    }
   }
 }
 
@@ -184,6 +187,7 @@ async function startServer() {
     const token = getSessionFromCookie(req);
     if (token) {
       activeSessions.delete(token);
+      revokeChatThreadsForSession(token);
     }
     res.setHeader("Set-Cookie", "session=; HttpOnly; SameSite=None; Secure; Path=/; Max-Age=0");
     return res.json({ success: true });
@@ -746,9 +750,13 @@ async function startServer() {
   app.post("/api/chat-assistant/message", async (req, res) => {
     try {
       const { message, threadId } = req.body;
-      const result = await handleChatAssistantMessage({ message, threadId });
+      const sessionId = getSessionFromCookie(req);
+      if (!sessionId || !isSessionValid(sessionId)) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+      const result = await handleChatAssistantMessage({ message, threadId, sessionId });
       if (!result.success) {
-        return res.status(400).json(result);
+        return res.status(result.forbidden ? 403 : 400).json(result);
       }
       res.json(result);
     } catch (error: any) {
