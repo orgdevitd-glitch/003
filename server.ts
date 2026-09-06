@@ -26,6 +26,18 @@ dotenv.config();
 
 const storage = new JsonProjectStorage();
 
+const projectDirectoryGlob = (directory: string) =>
+  `${path.resolve(process.cwd(), directory).replace(/\\/g, "/")}/**`;
+
+const DEV_SERVER_FS_DENY = [
+  ".env",
+  ".env.*",
+  "*.{crt,pem}",
+  "**/.git/**",
+  projectDirectoryGlob("data"),
+  projectDirectoryGlob("config")
+];
+
 // Session container for active tokens: token -> expiry timestamp (ms)
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const activeSessions = new Map<string, number>();
@@ -759,7 +771,12 @@ async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        fs: {
+          deny: DEV_SERVER_FS_DENY
+        }
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
