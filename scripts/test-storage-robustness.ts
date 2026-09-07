@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs-extra";
+import type { Project, ProjectAnalysisResult } from "../src/types";
 
 const TEST_DATA_DIR = path.join(process.cwd(), "data-test-temp");
 process.env.DATA_DIR = TEST_DATA_DIR;
@@ -79,6 +80,69 @@ async function main() {
 
     const projectsFileExists = await fs.pathExists(projectsFile);
     assert(projectsFileExists, "projects.json should have been recreated");
+  });
+
+  await runTest("Saving analyses preserves prior results and updates each project", async () => {
+    const projects: Project[] = [
+      {
+        projectId: "analysis-project-1",
+        projectName: "Analysis project one",
+        status: "active",
+        tasks: [],
+        milestones: [],
+        indicators: []
+      },
+      {
+        projectId: "analysis-project-2",
+        projectName: "Analysis project two",
+        status: "active",
+        tasks: [],
+        milestones: [],
+        indicators: []
+      }
+    ];
+    await storage.upsertProjects(projects, "analysis-persistence-test", "full");
+
+    const firstAnalysis: ProjectAnalysisResult = {
+      analysisId: "analysis-1",
+      projectId: "analysis-project-1",
+      createdAt: "2026-09-07T10:00:00.000Z",
+      model: "test-model",
+      managementConclusion: "First project conclusion"
+    };
+    const secondAnalysis: ProjectAnalysisResult = {
+      analysisId: "analysis-2",
+      projectId: "analysis-project-2",
+      createdAt: "2026-09-07T10:05:00.000Z",
+      model: "test-model",
+      managementConclusion: "Second project conclusion"
+    };
+
+    await storage.saveAnalysis(projects[0].projectId, firstAnalysis);
+    await storage.saveAnalysis(projects[1].projectId, secondAnalysis);
+
+    const persistedAnalyses = await fs.readJson(
+      path.join(TEST_DATA_DIR, "analysis-results.json")
+    ) as Record<string, ProjectAnalysisResult>;
+    assert(
+      persistedAnalyses[projects[0].projectId]?.analysisId === firstAnalysis.analysisId,
+      "Saving a second analysis must preserve the first project's analysis"
+    );
+    assert(
+      persistedAnalyses[projects[1].projectId]?.analysisId === secondAnalysis.analysisId,
+      "The second project's analysis must be persisted under its project ID"
+    );
+
+    const reloadedStorage = new JsonProjectStorage();
+    const persistedProjects = await reloadedStorage.getAllProjects();
+    assert(
+      persistedProjects.find(project => project.projectId === projects[0].projectId)?.lastAnalysis?.analysisId === firstAnalysis.analysisId,
+      "The first project must reference its saved analysis after storage reload"
+    );
+    assert(
+      persistedProjects.find(project => project.projectId === projects[1].projectId)?.lastAnalysis?.analysisId === secondAnalysis.analysisId,
+      "The second project must reference its saved analysis after storage reload"
+    );
   });
 
   await runTest("Write error propagation in safeWriteJson", async () => {
