@@ -28,6 +28,20 @@ export function normalizeDateValue(value: string | null | undefined): string | n
   return standardized;
 }
 
+export function resolveAssessmentDateForDisplay(
+  mode: "today" | "custom",
+  localToday: string,
+  customDate: string,
+  serverDate: string | null
+): string {
+  if (mode === "custom") {
+    return customDate;
+  }
+  return serverDate && /^\d{4}-\d{2}-\d{2}$/.test(serverDate)
+    ? serverDate
+    : localToday;
+}
+
 export function parseDateSafe(value: string | null | undefined): Date | null {
   const normalized = normalizeDateValue(value);
   if (!normalized) {

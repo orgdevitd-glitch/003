@@ -38,7 +38,7 @@ import { useAdvancedAccess } from './components/AdvancedAccessContext';
 import { exportPortfolioToPDF } from './utils/pdfExport';
 import { buildExcelExportData } from './utils/projectTableExportData';
 import { ChatAssistantWidget } from './components/ChatAssistantWidget';
-import { parseDateSafe, formatDateSafe } from './utils/dateUtils';
+import { parseDateSafe, formatDateSafe, resolveAssessmentDateForDisplay } from './utils/dateUtils';
 import {
   getRegistryPcStatusView,
   getRegistryRiskView,
@@ -95,6 +95,7 @@ export default function App() {
   } | null>(null);
   const [dataSource, setDataSource] = useState<any>(null);
   const [assessmentMode, setAssessmentMode] = useState<'today' | 'custom'>('today');
+  const [serverAssessmentDate, setServerAssessmentDate] = useState<string | null>(null);
 
   const [customAssessmentDate, setCustomAssessmentDate] = useState<string>(() => {
     try {
@@ -127,11 +128,13 @@ export default function App() {
     const day = String(d.getDate()).padStart(2, '0');
     const todayStr = `${year}-${month}-${day}`;
 
-    if (assessmentMode === 'today') {
-      return todayStr;
-    }
-    return customAssessmentDate;
-  }, [assessmentMode, customAssessmentDate]);
+    return resolveAssessmentDateForDisplay(
+      assessmentMode,
+      todayStr,
+      customAssessmentDate,
+      serverAssessmentDate
+    );
+  }, [assessmentMode, customAssessmentDate, serverAssessmentDate]);
 
   const getQuarterFromDate = (date: Date): number => {
     const month = date.getMonth();
@@ -150,6 +153,12 @@ export default function App() {
   const [overviewSelectedQuarter, setOverviewSelectedQuarter] = useState<number>(() =>
     getQuarterFromDateString(assessmentDateStr)
   );
+
+  useEffect(() => {
+    if (assessmentMode === "today") {
+      setOverviewSelectedQuarter(getQuarterFromDateString(assessmentDateStr));
+    }
+  }, [assessmentMode, assessmentDateStr]);
 
   const [normalizedProjects, setNormalizedProjects] = useState<NormalizedProject[]>([]);
   const [importReport, setImportReport] = useState<ImportValidationReport | null>(null);
@@ -286,6 +295,13 @@ export default function App() {
         if (!response.ok) throw new Error('Не удалось загрузить данные из системы');
         const data = await response.json();
         if (data.success) {
+          if (
+            assessmentMode === 'today' &&
+            typeof data.assessmentDate === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(data.assessmentDate)
+          ) {
+            setServerAssessmentDate(data.assessmentDate);
+          }
           if (data.indicatorDictionary) {
             setIndicatorDictionary(data.indicatorDictionary);
           }
@@ -330,7 +346,7 @@ export default function App() {
       }
     };
     fetchData();
-  }, [refreshTrigger, isAuthenticated, assessmentDateStr]);
+  }, [refreshTrigger, isAuthenticated, assessmentMode, customAssessmentDate]);
 
   const handleLogout = async () => {
     try {
@@ -342,6 +358,7 @@ export default function App() {
     setProjects([]);
     setStats(null);
     setSelectedProjectId(null);
+    setServerAssessmentDate(null);
   };
 
   const handleRefresh = () => {

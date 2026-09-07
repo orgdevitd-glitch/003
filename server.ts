@@ -486,6 +486,7 @@ async function startServer() {
 
       res.json({
         success: true,
+        assessmentDate: assessmentDate.toISOString().split("T")[0],
         projects,
         normalizedProjects: getLatestNormalizedProjects(),
         projectEvaluations,
