@@ -75,6 +75,16 @@ runTest("List Parser splitListCell", () => {
 
   const r2 = splitListCell("Item 1, Item 2, Item 3");
   assert(r2.status === "warning", "List with commas but no semicolons should return warning");
+
+  const positional = splitListCell("First;;Third;", { preserveEmpty: true });
+  assertDeepEqual(
+    positional.value,
+    ["First", "", "Third", ""],
+    "Preserved empty slots must keep milestone and indicator values positionally aligned"
+  );
+
+  const decimal = splitListCell("1,5");
+  assert(decimal.status === "success", "A decimal comma must not be mistaken for a comma-separated list");
 });
 
 runTest("Date Parser parseDateCell", () => {
@@ -88,6 +98,22 @@ runTest("Date Parser parseDateCell", () => {
   const r3 = parseDateCell("   ");
   assert(r3.value === null, "Empty date should remain null without fallback");
   assert(r3.status === "success", "Empty date should parse successfully as null");
+
+  const leapDay = parseDateCell("29.02.2024");
+  assert(leapDay.value === "2024-02-29", "A leap day in a leap year should be accepted");
+  assert(leapDay.status === "success", "A valid leap day should succeed");
+
+  const nonLeapDay = parseDateCell("29.02.2023");
+  assert(nonLeapDay.value === null, "A leap day in a non-leap year should not produce a date");
+  assert(nonLeapDay.status === "error", "An impossible leap day should fail");
+
+  const impossibleMonthDay = parseDateCell("31.04.2026");
+  assert(impossibleMonthDay.value === null, "April 31 should not produce a date");
+  assert(impossibleMonthDay.status === "error", "An impossible month/day combination should fail");
+
+  const isoTimestamp = parseDateCell("2024-02-29T23:30:00-05:00");
+  assert(isoTimestamp.value === "2024-02-29", "An ISO timestamp should retain its stated calendar date");
+  assert(isoTimestamp.status === "success", "A valid ISO timestamp should succeed");
 });
 
 runTest("Percent Parser parsePercentCell", () => {
@@ -101,6 +127,22 @@ runTest("Percent Parser parsePercentCell", () => {
 
   const r3 = parsePercentCell("80");
   assert(r3.value === 80, "Raw integer should be kept as percent");
+});
+
+runTest("URL Parser parseUrlCell", () => {
+  const httpsUrl = parseUrlCell("https://example.com/projects/42?view=summary");
+  assert(httpsUrl.value === "https://example.com/projects/42?view=summary", "HTTPS project links should be preserved");
+  assert(httpsUrl.status === "success", "HTTPS project links should succeed");
+
+  for (const unsafeUrl of ["javascript:alert(1)", "file:///etc/passwd"]) {
+    const parsed = parseUrlCell(unsafeUrl);
+    assert(parsed.value === null, `Unsafe URL scheme should be rejected: ${unsafeUrl}`);
+    assert(parsed.status === "error", `Unsafe URL scheme should return an error: ${unsafeUrl}`);
+  }
+
+  const malformedUrl = parseUrlCell("not a url");
+  assert(malformedUrl.value === null, "Malformed project links should not be imported");
+  assert(malformedUrl.status === "error", "Malformed project links should return an error");
 });
 
 // 3. Quarter Status Evaluation relative to Assessment Dates
