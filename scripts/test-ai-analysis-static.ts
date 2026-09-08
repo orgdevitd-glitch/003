@@ -63,6 +63,23 @@ runTest("Verify ai-analysis-full container in ProjectCard is free of animate-sof
   assert(content.includes('id="ai-analysis-full" className="pt-8"'), "ai-analysis-full container should use static pt-8 class");
 });
 
+runTest("Verify cross-site form posts cannot trigger AI analysis", () => {
+  const filePath = path.join(process.cwd(), "server.ts");
+  const content = fs.readFileSync(filePath, "utf8");
+  const routeStart = content.indexOf('app.post("/api/projects/:projectId/analyze"');
+  const routeEnd = content.indexOf("// 18. GET /api/sync-logs", routeStart);
+
+  assert(routeStart !== -1 && routeEnd !== -1, "AI analysis route must exist");
+
+  const route = content.slice(routeStart, routeEnd);
+  const jsonGuard = route.indexOf('if (!req.is("application/json"))');
+  const projectLookup = route.indexOf("storage.getProjectById");
+
+  assert(jsonGuard !== -1, "AI analysis route must require application/json");
+  assert(route.includes("res.status(415)"), "Non-JSON analysis requests must return HTTP 415");
+  assert(jsonGuard < projectLookup, "JSON content-type guard must run before project lookup and AI work");
+});
+
 console.log("-----------------------------------------------------------");
 console.log("All AI static-analysis verification test cases passed successfully!");
 console.log("-----------------------------------------------------------");
