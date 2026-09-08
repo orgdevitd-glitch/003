@@ -529,6 +529,15 @@ async function startServer() {
   // 7.6. POST /api/projects/:projectId/analyze
   app.post("/api/projects/:projectId/analyze", async (req, res) => {
     try {
+      // This session cookie must be SameSite=None for iframe deployments. Requiring
+      // JSON keeps cross-site HTML forms from triggering billable AI analyses.
+      if (!req.is("application/json")) {
+        return res.status(415).json({
+          success: false,
+          error: "Content-Type application/json is required"
+        });
+      }
+
       const project = await storage.getProjectById(req.params.projectId);
       if (!project) {
         return res.status(404).json({ success: false, error: "Project not found" });
