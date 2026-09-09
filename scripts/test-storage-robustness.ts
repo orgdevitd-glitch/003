@@ -81,6 +81,89 @@ async function main() {
     assert(projectsFileExists, "projects.json should have been recreated");
   });
 
+  await runTest("Import results are mirrored in the persisted sync audit log", async () => {
+    const result = await storage.upsertProjects([
+      {
+        projectId: "valid-1",
+        projectName: "Valid project",
+        status: "active",
+        tasks: [],
+        milestones: [],
+        indicators: []
+      },
+      {
+        projectId: "invalid-1",
+        projectName: "",
+        status: "active",
+        tasks: [],
+        milestones: [],
+        indicators: []
+      }
+    ], "bitrix-import-audit", "incremental");
+
+    assert(result.receivedProjects === 2, "Import result should count every received row");
+    assert(result.created === 1, "Import result should count the valid created project");
+    assert(result.errors.length === 1, "Import result should report the rejected project");
+
+    const logs = await storage.getSyncLogs();
+    assert(logs.length === 1, "A successful import should append exactly one audit log");
+    const [log] = logs;
+    assert(log.syncId === result.syncId, "Audit log should use the import sync ID");
+    assert(log.source === "bitrix24", "Non-Sheets imports should be attributed to Bitrix");
+    assert(String(log.mode) === "incremental", "Audit log should preserve the import mode");
+    assert(log.receivedProjects === result.receivedProjects, "Audit log should mirror the received count");
+    assert(log.created === result.created, "Audit log should mirror the created count");
+    assert(log.updated === result.updated, "Audit log should mirror the updated count");
+    assert(log.deleted === result.deleted, "Audit log should mirror the deleted count");
+    assert(log.errors.length === result.errors.length, "Audit log should preserve rejected-row diagnostics");
+    assert(log.errors[0].projectId === "invalid-1", "Audit log should identify the rejected project");
+    assert(!Number.isNaN(Date.parse(log.receivedAt)), "Audit log should contain a valid receipt timestamp");
+  });
+
+  await runTest("Sync audit history keeps the newest 100 entries in order", async () => {
+    const syncLogsFile = path.join(TEST_DATA_DIR, "sync-logs.json");
+    const seededLogs = Array.from({ length: 100 }, (_, index) => ({
+      syncId: `seed-${index}`,
+      source: "bitrix24",
+      mode: "incremental",
+      receivedAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+      receivedProjects: 0,
+      created: 0,
+      updated: 0,
+      deleted: 0,
+      errors: []
+    }));
+    await fs.writeJson(syncLogsFile, seededLogs);
+
+    await storage.upsertProjects([], "sheets-sync-retention", "incremental");
+
+    const logs = await storage.getSyncLogs();
+    assert(logs.length === 100, `Sync history should be capped at 100 entries, got ${logs.length}`);
+    assert(logs[0].syncId === "sheets-sync-retention", "Newest sync should be first");
+    assert(logs[0].source === "sheets", "Sheets sync IDs should be attributed to Sheets");
+    assert(logs[99].syncId === "seed-98", "The newest 99 prior entries should be retained");
+    assert(!logs.some(log => log.syncId === "seed-99"), "The oldest prior entry should be discarded");
+  });
+
+  await runTest("Sheets sync metadata defaults and saved state survive storage reads", async () => {
+    const defaults = await storage.getSheetsSyncMeta();
+    assert(defaults.lastSuccessfulSheetsSyncAt === null, "Missing metadata should default the success timestamp");
+    assert(defaults.lastSuccessfulSheetsProjectsCount === 0, "Missing metadata should default the project count");
+    assert(defaults.lastSheetsErrorAt === null, "Missing metadata should default the error timestamp");
+    assert(defaults.lastSheetsErrorReason === null, "Missing metadata should default the error reason");
+
+    const savedMeta = {
+      lastSuccessfulSheetsSyncAt: "2026-09-09T11:00:00.000Z",
+      lastSuccessfulSheetsProjectsCount: 42,
+      lastSheetsErrorAt: "2026-09-08T10:00:00.000Z",
+      lastSheetsErrorReason: "upstream timeout"
+    };
+    await storage.saveSheetsSyncMeta(savedMeta);
+
+    const reloaded = await storage.getSheetsSyncMeta();
+    assert(JSON.stringify(reloaded) === JSON.stringify(savedMeta), "Saved Sheets sync metadata should round-trip exactly");
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {
