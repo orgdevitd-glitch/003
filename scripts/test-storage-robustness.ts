@@ -81,6 +81,31 @@ async function main() {
     assert(projectsFileExists, "projects.json should have been recreated");
   });
 
+  await runTest("Full sync does not persist duplicate project IDs", async () => {
+    const projectsFile = path.join(TEST_DATA_DIR, "projects.json");
+    await fs.writeJson(projectsFile, []);
+    await fs.writeJson(path.join(TEST_DATA_DIR, "sync-logs.json"), []);
+
+    const result = await storage.upsertProjects([
+      {
+        projectId: "duplicate-id",
+        projectName: "First project"
+      } as any,
+      {
+        projectId: "duplicate-id",
+        projectName: "Conflicting project"
+      } as any
+    ], "sheets-sync-duplicate-regression", "full");
+
+    assert(result.created === 1, "Only the first project with an ID should be created");
+    assert(result.errors.length === 1, "The duplicate row should be reported as an import error");
+    assert(result.errors[0].projectId === "duplicate-id", "The duplicate error should identify the project ID");
+
+    const storedProjects = await storage.getAllProjects();
+    assert(storedProjects.length === 1, "A full sync must persist only one project per ID");
+    assert(storedProjects[0].projectName === "First project", "The first valid row should win");
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {

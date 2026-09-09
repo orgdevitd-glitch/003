@@ -92,6 +92,14 @@ export class JsonProjectStorage implements ProjectStorage {
         });
         continue;
       }
+      if (incomingIds.has(project.projectId)) {
+        errors.push({
+          projectId: project.projectId,
+          field: "projectId",
+          message: "Duplicate projectId in the same import batch"
+        });
+        continue;
+      }
       incomingIds.add(project.projectId);
       validIncomingProjects.push(project);
     }
