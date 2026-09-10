@@ -188,8 +188,11 @@ export function evaluateProject(
   // 2. MILESTONES EVALUATION
   // ==========================================
   let milestonesEval: ProjectEvaluation["milestones"];
+  const applicableMilestones = project.milestones.filter(
+    milestone => milestone.isApplicableQuarter !== false
+  );
 
-  if (project.milestones.length === 0) {
+  if (applicableMilestones.length === 0) {
     milestonesEval = {
       status: "not_applicable",
       totalProgressPercent: null,
@@ -202,16 +205,16 @@ export function evaluateProject(
       overdueMilestonesCount: 0,
       milestoneResults: []
     };
-    explanations.push("Вехи отсутствуют в проекте.");
+    explanations.push("В применимых периодах проекта вехи отсутствуют.");
   } else {
     // Run the new milestones weight model
-    const modelResult = calculateMilestonesWeightModel(project.milestones);
+    const modelResult = calculateMilestonesWeightModel(applicableMilestones);
 
     let actualCount = 0;
     let completedCount = 0;
     let overdueCount = 0;
 
-    for (const m of project.milestones) {
+    for (const m of applicableMilestones) {
       if (m.progressPercent === 100) {
         completedCount++;
       }
@@ -255,7 +258,7 @@ export function evaluateProject(
         let actualContributionSum = 0;
 
         for (const m of modelResult.milestones) {
-          const origMilestone = project.milestones.find(om => om.id === m.id);
+          const origMilestone = applicableMilestones.find(om => om.id === m.id);
           if (origMilestone && (origMilestone.periodStatus === "past" || origMilestone.periodStatus === "current")) {
             actualWeightSum += m.effectiveWeightPercent;
             actualContributionSum += (m.effectiveWeightPercent * (m.completionPercent ?? 0)) / 100;
@@ -307,7 +310,7 @@ export function evaluateProject(
           : modelResult.weightStatus === "no_milestones"
             ? "not_applicable"
             : "ok") as "ok" | "warning" | "error" | "not_applicable",
-      milestonesCount: project.milestones.length,
+      milestonesCount: applicableMilestones.length,
       actualMilestonesCount: actualCount,
       completedMilestonesCount: completedCount,
       overdueMilestonesCount: overdueCount,
@@ -326,10 +329,12 @@ export function evaluateProject(
   let sumPerformance = 0;
   let sumCappedPerformance = 0;
 
-  const indsList = project.indicators;
+  const indsList = project.indicators.filter(
+    indicator => indicator.isApplicableQuarter !== false
+  );
 
   if (indsList.length === 0) {
-    explanations.push("Показатели результатов не заданы в контракте.");
+    explanations.push("Показатели результатов не заданы в применимых периодах проекта.");
   }
 
   for (const ind of indsList) {

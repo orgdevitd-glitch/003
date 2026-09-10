@@ -226,6 +226,75 @@ runTest("Scenario 4: Future indicators without fact must be skipped gracefully",
   assert(futureEvalObj?.status === "future", "Future item status should be 'future'");
 });
 
+runTest("Scenario 4b: Data outside the project lifecycle must not affect evaluation", () => {
+  const proj = createMockProject({
+    baseInfo: {
+      startDate: "2026-04-01",
+      endDate: "2026-09-30"
+    },
+    milestones: [
+      {
+        id: "M-OUTSIDE",
+        year: 2026,
+        quarter: "Q1",
+        name: "Веха вне жизненного цикла",
+        progressPercent: 0,
+        weightPercent: null,
+        periodStatus: "past",
+        isApplicableQuarter: false,
+        sourceColumns: { name: "", progress: "", weight: "" }
+      },
+      {
+        id: "M-APPLICABLE",
+        year: 2026,
+        quarter: "Q2",
+        name: "Применимая веха",
+        progressPercent: 100,
+        weightPercent: null,
+        periodStatus: "current",
+        isApplicableQuarter: true,
+        sourceColumns: { name: "", progress: "", weight: "" }
+      }
+    ],
+    indicators: [
+      {
+        id: "IND-OUTSIDE",
+        year: 2026,
+        quarter: "Q1",
+        name: "Доля подразделений, прошедших обучение",
+        plan: 100,
+        fact: 10,
+        periodStatus: "past",
+        isApplicableQuarter: false,
+        factStatus: "not_applicable",
+        sourceColumns: { name: "", plan: "", fact: "" }
+      },
+      {
+        id: "IND-APPLICABLE",
+        year: 2026,
+        quarter: "Q2",
+        name: "Доля подразделений, прошедших обучение",
+        plan: 100,
+        fact: 100,
+        periodStatus: "current",
+        isApplicableQuarter: true,
+        factStatus: "filled",
+        sourceColumns: { name: "", plan: "", fact: "" }
+      }
+    ]
+  });
+
+  const res = evaluateProject(proj, { assessmentDate: new Date("2026-06-01") });
+
+  assert(res.milestones.totalProgressPercent === 100, "Only the applicable milestone should contribute to total progress");
+  assert(res.milestones.actualProgressPercent === 100, "Only the applicable milestone should contribute to actual progress");
+  assert(res.milestones.overdueMilestonesCount === 0, "A non-applicable past milestone must not be marked overdue");
+  assert(res.milestones.milestonesCount === 1, "Milestone counts must cover applicable quarters only");
+  assert(res.indicators.averagePerformancePercent === 100, "A non-applicable indicator must not lower KPI performance");
+  assert(res.indicators.calculatedIndicatorsCount === 1, "Indicator counts must cover applicable quarters only");
+  assert(res.indicators.indicatorResults.length === 1, "Non-applicable indicators must not appear in evaluation results");
+});
+
 // 5. Проект с несколькими годами
 runTest("Scenario 5: Multi-year monitoring scope", () => {
   const proj = createMockProject({
