@@ -2,6 +2,7 @@ import fs from "fs-extra";
 import path from "path";
 import { 
   loadIndicatorDictionary, 
+  loadIndicatorDictionaryWithTTL,
   getIndicatorDictionaryStatus, 
   getUnknownIndicatorsReport 
 } from "../server/services/indicatorDictionaryService";
@@ -288,6 +289,43 @@ async function runTests() {
     assert(statusH.source === "default", `Should fallback to default on invalid cache, got source: ${statusH.source}`);
     assert(getIndicatorDictionary().find(item => item.name === "Битый KPI") === undefined, "Broken KPI should not be present in active dictionary");
     console.log("✓ Cache with invalid items was correctly rejected and fell back to default");
+
+    // ==========================================
+    // Сценарий I: TTL подавляет лишние загрузки
+    // ==========================================
+    console.log("\n[Test Scenario I] TTL suppresses reloads until the exact expiry boundary...");
+
+    const originalDateNow = Date.now;
+    const ttlMs = 10_000;
+    const firstLoadAt = originalDateNow() + 60_000;
+    let now = firstLoadAt;
+    let fetchCount = 0;
+
+    Date.now = () => now;
+    global.fetch = async () => {
+      fetchCount++;
+      return {
+        status: 200,
+        headers: { get: () => "text/csv" },
+        text: async () => healthyCsv
+      } as any;
+    };
+
+    try {
+      await loadIndicatorDictionaryWithTTL(ttlMs);
+      assert(fetchCount === 1, `Expired dictionary should reload once, got ${fetchCount} fetches`);
+
+      now = firstLoadAt + ttlMs - 1;
+      await loadIndicatorDictionaryWithTTL(ttlMs);
+      assert(fetchCount === 1, "Dictionary should not reload before TTL expires");
+
+      now = firstLoadAt + ttlMs;
+      await loadIndicatorDictionaryWithTTL(ttlMs);
+      assert(fetchCount === 2, "Dictionary should reload exactly when TTL expires");
+    } finally {
+      Date.now = originalDateNow;
+    }
+    console.log("✓ TTL prevents reload storms and refreshes at expiry");
 
   } finally {
     // Restore fetch and cleanup test dirs
