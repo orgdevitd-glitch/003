@@ -313,6 +313,17 @@ async function startServer() {
   app.get("/api/projects", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     try {
+      const isSyncRequested = req.query.sync === "true";
+      // Session cookies are SameSite=None for iframe deployments. A custom header
+      // prevents forms, images, and navigations on other origins from invoking
+      // this state-changing GET while preserving the existing dashboard API.
+      if (isSyncRequested && req.get("X-Requested-With") !== "XMLHttpRequest") {
+        return res.status(403).json({
+          success: false,
+          error: "Manual synchronization requires an explicit dashboard request"
+        });
+      }
+
       // Refresh the KPI indicator dictionary if TTL has expired
       await loadIndicatorDictionaryWithTTL();
 
@@ -360,7 +371,6 @@ async function startServer() {
       }
 
       const rawProjectsCount = (await storage.getAllProjects()).length;
-      const isSyncRequested = req.query.sync === "true";
       const shouldSync = isSyncRequested || (rawProjectsCount === 0);
 
       let sheetsProjects: any[] = [];
