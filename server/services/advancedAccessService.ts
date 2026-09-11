@@ -159,3 +159,60 @@ export function revokeAdvancedAccessSession(req: express.Request, res: express.R
     "advanced_access_session=; HttpOnly; SameSite=None; Secure; Path=/; Max-Age=0"
   );
 }
+
+/**
+ * Registers the advanced-access HTTP contract used by the application.
+ * Kept here so integration tests exercise the production route handlers.
+ */
+export function installAdvancedAccessRoutes(app: express.Application): void {
+  app.get("/api/advanced-access/config", (_req, res) => {
+    try {
+      const config = getAdvancedAccessConfig();
+      return res.json({
+        success: true,
+        config: {
+          enabled: config.enabled,
+          displayName: config.displayName,
+          ttlMinutes: config.ttlMinutes,
+          protectedActions: config.protectedActions
+        }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.post("/api/advanced-access/verify", (req, res) => {
+    try {
+      const { password } = req.body;
+      if (!password) {
+        return res.status(400).json({ success: false, error: "Код обязателен к заполнению" });
+      }
+
+      if (verifyAdvancedAccessPassword(password)) {
+        createAdvancedAccessSession(res);
+        return res.json({ success: true });
+      }
+      return res.status(401).json({ success: false, error: "Неверный код доступа" });
+    } catch (_error: any) {
+      return res.status(500).json({ success: false, error: "Внутренняя ошибка сервера" });
+    }
+  });
+
+  app.get("/api/advanced-access/status", (req, res) => {
+    try {
+      return res.json({ success: true, active: isAdvancedAccessActive(req) });
+    } catch (_error: any) {
+      return res.status(401).json({ success: false, error: "Ошибка при получении статуса" });
+    }
+  });
+
+  app.post("/api/advanced-access/revoke", (req, res) => {
+    try {
+      revokeAdvancedAccessSession(req, res);
+      return res.json({ success: true });
+    } catch (_error: any) {
+      return res.status(401).json({ success: false, error: "Ошибка при отзыве сессии" });
+    }
+  });
+}
