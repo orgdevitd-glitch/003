@@ -233,6 +233,14 @@ async function main() {
     });
 
     testApp.get("/api/projects", (req, res) => {
+      const isSyncRequested = req.query.sync === "true";
+      if (isSyncRequested && req.get("X-Requested-With") !== "XMLHttpRequest") {
+        return res.status(403).json({
+          success: false,
+          error: "Manual synchronization requires an explicit dashboard request"
+        });
+      }
+
       const assessmentModeQuery = req.query.assessmentMode;
 
       if (assessmentModeQuery === 'custom') {
@@ -262,7 +270,6 @@ async function main() {
         }
       }
 
-      const isSyncRequested = req.query.sync === "true";
       if (isSyncRequested && !isAdvancedAccessActive(req)) {
         return res.status(403).json({ success: false, error: "Требуется код расширенного доступа для ручной синхронизации" });
       }
@@ -384,15 +391,17 @@ async function main() {
 
       // 7. GET /api/projects?sync=true без advanced access возвращает 403
       await runTestAsync("Server 7. GET /api/projects?sync=true without advanced access returns 403", async () => {
-        const res = await fetch(`${baseUrl}/api/projects?sync=true`);
+        const res = await fetch(`${baseUrl}/api/projects?sync=true`, {
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
         assert(res.status === 403, `Expected 403, got ${res.status}`);
         const data = await res.json();
         assert(data.success === false, "Should fail");
         assert(data.error.includes("расширенного доступа"), "Error message should mention advanced access");
       });
 
-      // 8. GET /api/projects?sync=true с active advanced access выполняется
-      await runTestAsync("Server 8. GET /api/projects?sync=true with active advanced access executes", async () => {
+      // 8. Cross-site navigations/forms cannot add the required dashboard header
+      await runTestAsync("Server 8. GET /api/projects?sync=true without dashboard header is rejected", async () => {
         const verifyRes = await fetch(`${baseUrl}/api/advanced-access/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -402,6 +411,26 @@ async function main() {
 
         const res = await fetch(`${baseUrl}/api/projects?sync=true`, {
           headers: { "Cookie": cookie }
+        });
+        assert(res.status === 403, `Expected 403, got ${res.status}`);
+        const data = await res.json();
+        assert(data.success === false, "Sync without an explicit dashboard request should fail");
+      });
+
+      // 8b. GET /api/projects?sync=true с active advanced access и dashboard header выполняется
+      await runTestAsync("Server 8b. GET /api/projects?sync=true with active advanced access executes", async () => {
+        const verifyRes = await fetch(`${baseUrl}/api/advanced-access/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: "correct-password" })
+        });
+        const cookie = verifyRes.headers.get("set-cookie") || "";
+
+        const res = await fetch(`${baseUrl}/api/projects?sync=true`, {
+          headers: {
+            "Cookie": cookie,
+            "X-Requested-With": "XMLHttpRequest"
+          }
         });
         assert(res.status === 200, `Expected 200, got ${res.status}`);
         const data = await res.json();

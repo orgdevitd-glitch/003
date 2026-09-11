@@ -263,7 +263,10 @@ export default function App() {
         }
         const response = await fetch(`/api/projects?${urlParams.toString()}`, { 
           credentials: 'include',
-          cache: 'no-store'
+          cache: 'no-store',
+          headers: isManualSync
+            ? { "X-Requested-With": "XMLHttpRequest" }
+            : undefined
         });
         if (response.status === 401) {
           setIsAuthenticated(false);
