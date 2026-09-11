@@ -3,8 +3,7 @@ import {
   verifyAdvancedAccessPassword, 
   hashAdvancedPassword,
   isAdvancedAccessActive,
-  createAdvancedAccessSession,
-  revokeAdvancedAccessSession
+  installAdvancedAccessRoutes
 } from "../server/services/advancedAccessService";
 import fs from "fs-extra";
 import path from "path";
@@ -195,42 +194,7 @@ async function main() {
 
     const testApp = express();
     testApp.use(express.json());
-
-    // Define endpoints exactly mimicking server.ts logic
-    testApp.post("/api/advanced-access/verify", (req, res) => {
-      try {
-        const { password } = req.body;
-        if (!password) {
-          return res.status(400).json({ success: false, error: "Код обязателен к заполнению" });
-        }
-        if (verifyAdvancedAccessPassword(password)) {
-          createAdvancedAccessSession(res);
-          return res.json({ success: true });
-        } else {
-          return res.status(401).json({ success: false, error: "Неверный код доступа" });
-        }
-      } catch (error: any) {
-        return res.status(500).json({ success: false, error: "Внутренняя ошибка сервера" });
-      }
-    });
-
-    testApp.get("/api/advanced-access/status", (req, res) => {
-      try {
-        const active = isAdvancedAccessActive(req);
-        return res.json({ success: true, active });
-      } catch (error: any) {
-        return res.status(401).json({ success: false, error: "Ошибка при получении статуса" });
-      }
-    });
-
-    testApp.post("/api/advanced-access/revoke", (req, res) => {
-      try {
-        revokeAdvancedAccessSession(req, res);
-        return res.json({ success: true });
-      } catch (error: any) {
-        return res.status(401).json({ success: false, error: "Ошибка при отзыве сессии" });
-      }
-    });
+    installAdvancedAccessRoutes(testApp);
 
     testApp.get("/api/projects", (req, res) => {
       const assessmentModeQuery = req.query.assessmentMode;
@@ -280,6 +244,19 @@ async function main() {
 
     try {
       let savedCookie = "";
+
+      // 0. GET /api/advanced-access/config exposes only client-safe settings
+      await runTestAsync("Server 0. GET /api/advanced-access/config does not expose password hash", async () => {
+        const res = await fetch(`${baseUrl}/api/advanced-access/config`);
+        assert(res.status === 200, `Expected 200, got ${res.status}`);
+        const data = await res.json();
+        assert(data.success === true, "Config request should succeed");
+        assert(data.config.enabled === true, "Enabled state should be exposed");
+        assert(data.config.displayName === "Код расширенного доступа", "Display name should be exposed");
+        assert(Array.isArray(data.config.protectedActions), "Protected actions should be exposed");
+        assert(!Object.prototype.hasOwnProperty.call(data.config, "passwordHash"), "Password hash must never be exposed");
+        assert(!JSON.stringify(data).includes(hashAdvancedPassword("correct-password")), "Response must not contain the configured password hash");
+      });
 
       // 1. POST /api/advanced-access/verify с правильным паролем создает httpOnly cookie advanced_access_session
       await runTestAsync("Server 1. POST /api/advanced-access/verify with correct password sets cookie", async () => {

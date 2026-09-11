@@ -15,11 +15,8 @@ import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
 import { geoAccessMiddleware } from "./server/services/geoAccessService";
 import { 
-  getAdvancedAccessConfig, 
-  verifyAdvancedAccessPassword,
   isAdvancedAccessActive,
-  createAdvancedAccessSession,
-  revokeAdvancedAccessSession
+  installAdvancedAccessRoutes
 } from "./server/services/advancedAccessService";
 
 dotenv.config();
@@ -190,58 +187,7 @@ async function startServer() {
   });
 
   // Advanced Access Endpoints
-  app.get("/api/advanced-access/config", (req, res) => {
-    try {
-      const config = getAdvancedAccessConfig();
-      return res.json({
-        success: true,
-        config: {
-          enabled: config.enabled,
-          displayName: config.displayName,
-          ttlMinutes: config.ttlMinutes,
-          protectedActions: config.protectedActions
-        }
-      });
-    } catch (error: any) {
-      return res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  app.post("/api/advanced-access/verify", (req, res) => {
-    try {
-      const { password } = req.body;
-      if (!password) {
-        return res.status(400).json({ success: false, error: "Код обязателен к заполнению" });
-      }
-
-      if (verifyAdvancedAccessPassword(password)) {
-        createAdvancedAccessSession(res);
-        return res.json({ success: true });
-      } else {
-        return res.status(401).json({ success: false, error: "Неверный код доступа" });
-      }
-    } catch (error: any) {
-      return res.status(500).json({ success: false, error: "Внутренняя ошибка сервера" });
-    }
-  });
-
-  app.get("/api/advanced-access/status", (req, res) => {
-    try {
-      const active = isAdvancedAccessActive(req);
-      return res.json({ success: true, active });
-    } catch (error: any) {
-      return res.status(401).json({ success: false, error: "Ошибка при получении статуса" });
-    }
-  });
-
-  app.post("/api/advanced-access/revoke", (req, res) => {
-    try {
-      revokeAdvancedAccessSession(req, res);
-      return res.json({ success: true });
-    } catch (error: any) {
-      return res.status(401).json({ success: false, error: "Ошибка при отзыве сессии" });
-    }
-  });
+  installAdvancedAccessRoutes(app);
 
   // 7.1. health
   app.get("/api/health", (req, res) => {
