@@ -101,6 +101,43 @@ runTest("Percent Parser parsePercentCell", () => {
 
   const r3 = parsePercentCell("80");
   assert(r3.value === 80, "Raw integer should be kept as percent");
+
+  for (const malformed of ["1O0%", "10%%", "25abc", "50 percent"]) {
+    const result = parsePercentCell(malformed);
+    assert(result.value === null, `Malformed percentage "${malformed}" must not be truncated`);
+    assert(result.status === "error", `Malformed percentage "${malformed}" must report an error`);
+  }
+});
+
+runTest("Malformed Milestone Percent Is Reported", () => {
+  const headers = [
+    "ID", "Название", "Цели проекта", "Образы результатов", "Дата начала",
+    "Дата завершения", "Стадия", "Вид", "Приоритет",
+    "Вехи 2026 Q1", "% выполнения Вехи 2026 Q1", "Вес вехи 2026 Q1"
+  ];
+  const row = {
+    "ID": "1",
+    "Название": "Проект с ошибочным процентом",
+    "Цели проекта": "Цель",
+    "Образы результатов": "Результат",
+    "Дата начала": "01.01.2026",
+    "Дата завершения": "31.12.2026",
+    "Стадия": "В работе",
+    "Вид": "Проект",
+    "Приоритет": "1",
+    "Вехи 2026 Q1": "Запуск",
+    "% выполнения Вехи 2026 Q1": "1O0%",
+    "Вес вехи 2026 Q1": "100%"
+  };
+
+  const report = validateProjectRows([row], headers, {
+    assessmentDate: new Date("2026-06-04"),
+    detectedYears: [2026]
+  });
+  assert(
+    report.issues.some(issue => issue.code === "MILESTONE_PROGRESS_INVALID"),
+    "Malformed milestone progress must be surfaced as a validation error"
+  );
 });
 
 // 3. Quarter Status Evaluation relative to Assessment Dates

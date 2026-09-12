@@ -289,39 +289,31 @@ export function parsePercentCell(value: any): ParseResult<number> {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Check if it ends with %
-  if (rawStr.endsWith("%")) {
-    const cleanNumPart = rawStr.slice(0, -1).trim().replace(",", ".");
-    const parsed = parseFloat(cleanNumPart);
-    if (isNaN(parsed)) {
-      errors.push(`Недопустимый формат процента: "${rawStr}"`);
-      return {
-        value: null,
-        rawValue: rawStr,
-        status: "error",
-        errors,
-        warnings
-      };
-    }
-    return {
-      value: parsed,
-      rawValue: rawStr,
-      status: "success",
-      errors,
-      warnings
-    };
-  }
+  const hasPercentSuffix = rawStr.endsWith("%");
+  const numericToken = (hasPercentSuffix ? rawStr.slice(0, -1) : rawStr)
+    .trim()
+    .replace(",", ".");
 
-  // Pure number
-  const normalized = rawStr.replace(",", ".");
-  const parsedFloat = parseFloat(normalized);
-
-  if (isNaN(parsedFloat)) {
+  // parseFloat accepts a valid numeric prefix and silently ignores the rest
+  // (for example, "1O0%" becomes 1). Require the entire cell to be numeric.
+  if (!/^[+-]?\d+(\.\d+)?$/.test(numericToken)) {
     errors.push(`Недопустимый формат процента: "${rawStr}"`);
     return {
       value: null,
       rawValue: rawStr,
       status: "error",
+      errors,
+      warnings
+    };
+  }
+
+  const parsedFloat = Number(numericToken);
+
+  if (hasPercentSuffix) {
+    return {
+      value: parsedFloat,
+      rawValue: rawStr,
+      status: "success",
       errors,
       warnings
     };
