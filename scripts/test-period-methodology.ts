@@ -10,6 +10,7 @@ import {
   getQuarterPeriodStatus,
   resolveEffectiveAssessmentDateForSelectedYear
 } from "../src/utils/periodApplicability.js";
+import { getNormalizedMilestonesForYear } from "../src/utils/projectCalculations.js";
 import { getIndicatorYearCompletionMetricsFromEvaluation } from "../src/utils/evaluationIndicatorMetrics.js";
 import { getMilestoneYearCompletionMetricsFromEvaluation } from "../src/utils/evaluationMilestoneMetrics.js";
 import { computePortfolioProgressAggregates } from "../src/utils/overviewPortfolioAggregates.js";
@@ -332,6 +333,41 @@ runTest("First year of portfolio is not used as fallback when assessment is afte
   assert(y === 2026, `must clamp to last=2026, not first=2024; got ${y}`);
   const yEarly = resolveYearWithinAvailableYears(years, "2020-01-01");
   assert(yEarly === 2024, `before range → first=2024, got ${yEarly}`);
+  const yMissingInsideRange = resolveYearWithinAvailableYears([2024, 2026, 2028], "2027-01-01");
+  assert(yMissingInsideRange === 2026, `missing assessment year must select nearest prior year=2026, got ${yMissingInsideRange}`);
+});
+
+runTest("Raw milestone actual progress excludes future-quarter early facts", () => {
+  const project = baseProject({
+    startDate: "2026-01-01",
+    endDate: "2026-12-31",
+    deadlineAt: "2026-12-31",
+    _rawByYear: {
+      2026: {
+        milestones: {
+          q1names: "Completed milestone",
+          q1progress: "100",
+          q1weights: "25",
+          q2names: "Current milestone",
+          q2progress: "50",
+          q2weights: "25",
+          q3names: "Future milestone with early fact",
+          q3progress: "100",
+          q3weights: "50"
+        },
+        indicators: {}
+      }
+    }
+  });
+
+  const normalized = getNormalizedMilestonesForYear(project, 2026, "2026-06-15");
+
+  assert(normalized.totalProgressPercent === 87.5, `full-year total must retain all raw facts, got ${normalized.totalProgressPercent}`);
+  assert(normalized.actualProgressPercent === 75, `actual must include only completed/current weighted progress, got ${normalized.actualProgressPercent}`);
+  assert(
+    normalized.milestones.find(m => m.quarter === "Q3")?.periodStatus === "future",
+    "Q3 must be classified as future at the June assessment boundary"
+  );
 });
 
 runTest("Overview and PDF return identical portfolio aggregates", () => {
