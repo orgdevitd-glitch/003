@@ -13,7 +13,8 @@ import { getGoogleSheetsConfig, cleanEnv } from "./server/services/envHelper";
 import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndicatorsReport, loadIndicatorDictionaryWithTTL } from "./server/services/indicatorDictionaryService";
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
-import { geoAccessMiddleware } from "./server/services/geoAccessService";
+import { geoAccessMiddleware, getGeoAccessConfig, getUserIp } from "./server/services/geoAccessService";
+import { FailedAttemptRateLimiter } from "./server/services/authRateLimit";
 import { 
   getAdvancedAccessConfig, 
   verifyAdvancedAccessPassword,
@@ -29,6 +30,28 @@ const storage = new JsonProjectStorage();
 // Session container for active tokens: token -> expiry timestamp (ms)
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const activeSessions = new Map<string, number>();
+const loginAttemptLimiter = new FailedAttemptRateLimiter({
+  maxAttempts: 10,
+  windowMs: 15 * 60 * 1000,
+  blockMs: 15 * 60 * 1000
+});
+const advancedAccessAttemptLimiter = new FailedAttemptRateLimiter({
+  maxAttempts: 10,
+  windowMs: 15 * 60 * 1000,
+  blockMs: 15 * 60 * 1000
+});
+
+function getRequestRateLimitKey(req: express.Request): string {
+  return getUserIp(req, getGeoAccessConfig()) || "unknown";
+}
+
+function sendRateLimitResponse(res: express.Response, retryAfterSeconds: number) {
+  res.setHeader("Retry-After", String(retryAfterSeconds));
+  return res.status(429).json({
+    success: false,
+    error: "Слишком много неудачных попыток. Повторите позже."
+  });
+}
 
 function pruneExpiredSessions() {
   const now = Date.now();
@@ -149,12 +172,19 @@ async function startServer() {
   // Auth Endpoints
   // 1. POST /api/auth/login
   app.post("/api/auth/login", (req, res) => {
+    const rateLimitKey = getRequestRateLimitKey(req);
+    const rateLimitStatus = loginAttemptLimiter.check(rateLimitKey);
+    if (rateLimitStatus.blocked) {
+      return sendRateLimitResponse(res, rateLimitStatus.retryAfterSeconds);
+    }
+
     const { password } = req.body;
     if (!password) {
       return res.status(400).json({ success: false, error: "Пароль обязателен к заполнению" });
     }
 
     if (verifyPassword(password)) {
+      loginAttemptLimiter.recordSuccess(rateLimitKey);
       const sessionToken = crypto.randomBytes(32).toString("hex");
       activeSessions.set(sessionToken, Date.now() + SESSION_TTL_MS);
 
@@ -166,6 +196,10 @@ async function startServer() {
       );
       return res.json({ success: true, authenticated: true });
     } else {
+      const failureStatus = loginAttemptLimiter.recordFailure(rateLimitKey);
+      if (failureStatus.blocked) {
+        return sendRateLimitResponse(res, failureStatus.retryAfterSeconds);
+      }
       return res.status(401).json({ success: false, error: "Неверный пароль" });
     }
   });
@@ -209,15 +243,26 @@ async function startServer() {
 
   app.post("/api/advanced-access/verify", (req, res) => {
     try {
+      const rateLimitKey = getRequestRateLimitKey(req);
+      const rateLimitStatus = advancedAccessAttemptLimiter.check(rateLimitKey);
+      if (rateLimitStatus.blocked) {
+        return sendRateLimitResponse(res, rateLimitStatus.retryAfterSeconds);
+      }
+
       const { password } = req.body;
       if (!password) {
         return res.status(400).json({ success: false, error: "Код обязателен к заполнению" });
       }
 
       if (verifyAdvancedAccessPassword(password)) {
+        advancedAccessAttemptLimiter.recordSuccess(rateLimitKey);
         createAdvancedAccessSession(res);
         return res.json({ success: true });
       } else {
+        const failureStatus = advancedAccessAttemptLimiter.recordFailure(rateLimitKey);
+        if (failureStatus.blocked) {
+          return sendRateLimitResponse(res, failureStatus.retryAfterSeconds);
+        }
         return res.status(401).json({ success: false, error: "Неверный код доступа" });
       }
     } catch (error: any) {
