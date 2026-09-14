@@ -81,6 +81,56 @@ async function main() {
     assert(projectsFileExists, "projects.json should have been recreated");
   });
 
+  await runTest("Legacy scalar project lists are normalized without truncation", async () => {
+    const projectsFile = path.join(TEST_DATA_DIR, "projects.json");
+    const legacyProject = {
+      projectId: "legacy-1",
+      projectName: "Legacy project",
+      status: "active",
+      goals: "Implement the full platform rollout",
+      resultImages: "Dashboard and mobile application",
+      tasks: [],
+      milestones: [],
+      indicators: []
+    };
+    await fs.writeJson(projectsFile, [legacyProject]);
+
+    const [loadedProject] = await storage.getAllProjects();
+    assert(
+      Array.isArray(loadedProject.goals) && loadedProject.goals[0] === legacyProject.goals,
+      "String goals should be exposed as an array containing the full text"
+    );
+    assert(
+      Array.isArray(loadedProject.resultImages) && loadedProject.resultImages[0] === legacyProject.resultImages,
+      "String resultImages should be exposed as an array containing the full text"
+    );
+
+    const { reconstructNormalizedProjectsFromLegacy } = await import("../server/services/googleSheetsService");
+    const [normalizedProject] = reconstructNormalizedProjectsFromLegacy(
+      [loadedProject],
+      new Date("2026-09-14T00:00:00Z")
+    );
+    assert(
+      normalizedProject.baseInfo.goals === legacyProject.goals,
+      "Fallback reconstruction should preserve the complete goals text"
+    );
+    assert(
+      normalizedProject.baseInfo.resultImages === legacyProject.resultImages,
+      "Fallback reconstruction should preserve the complete result image text"
+    );
+
+    await storage.upsertProjects([
+      {
+        ...legacyProject,
+        projectId: "legacy-2"
+      } as any
+    ], "bitrix-shape-test", "incremental");
+    const persistedProjects = await fs.readJson(projectsFile);
+    const persistedProject = persistedProjects.find((project: any) => project.projectId === "legacy-2");
+    assert(Array.isArray(persistedProject.goals), "New scalar goals should be normalized before persistence");
+    assert(Array.isArray(persistedProject.resultImages), "New scalar resultImages should be normalized before persistence");
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {
