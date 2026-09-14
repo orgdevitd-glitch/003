@@ -10,6 +10,26 @@ const PROJECTS_FILE = path.join(DATA_DIR, "projects.json");
 const SYNC_LOGS_FILE = path.join(DATA_DIR, "sync-logs.json");
 const ANALYSIS_FILE = path.join(DATA_DIR, "analysis-results.json");
 
+function normalizeOptionalStringList(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .filter(item => item !== undefined && item !== null)
+    .map(item => typeof item === "string" ? item : String(item));
+}
+
+function normalizeProjectStringLists(project: Project): Project {
+  const normalized = { ...project };
+  const rawProject = project as unknown as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(project, "goals")) {
+    normalized.goals = normalizeOptionalStringList(rawProject.goals);
+  }
+  if (Object.prototype.hasOwnProperty.call(project, "resultImages")) {
+    normalized.resultImages = normalizeOptionalStringList(rawProject.resultImages);
+  }
+  return normalized;
+}
+
 export class JsonProjectStorage implements ProjectStorage {
   private initPromise: Promise<void>;
 
@@ -65,7 +85,8 @@ export class JsonProjectStorage implements ProjectStorage {
   }
 
   async getAllProjects(): Promise<Project[]> {
-    return await this.safeReadJson<Project[]>(PROJECTS_FILE, []);
+    const projects = await this.safeReadJson<Project[]>(PROJECTS_FILE, []);
+    return projects.map(normalizeProjectStringLists);
   }
 
   async getProjectById(projectId: string): Promise<Project | null> {
@@ -93,7 +114,7 @@ export class JsonProjectStorage implements ProjectStorage {
         continue;
       }
       incomingIds.add(project.projectId);
-      validIncomingProjects.push(project);
+      validIncomingProjects.push(normalizeProjectStringLists(project));
     }
 
     let created = 0;
