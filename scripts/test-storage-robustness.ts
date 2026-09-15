@@ -81,6 +81,46 @@ async function main() {
     assert(projectsFileExists, "projects.json should have been recreated");
   });
 
+  await runTest("Numeric import IDs update the matching string project", async () => {
+    const projectsFile = path.join(TEST_DATA_DIR, "projects.json");
+    await fs.writeJson(projectsFile, []);
+    await fs.writeJson(path.join(TEST_DATA_DIR, "analysis-results.json"), {});
+
+    await storage.upsertProjects([
+      {
+        projectId: "124554",
+        projectName: "Original project"
+      } as any
+    ], "bitrix-initial", "full");
+
+    const analysis = {
+      analysisId: "analysis-1",
+      projectId: "124554",
+      createdAt: "2026-09-15T00:00:00.000Z",
+      model: "test"
+    } as any;
+    await storage.saveAnalysis("124554", analysis);
+    const originalCreatedAt = (await storage.getProjectById("124554"))?.createdInAppAt;
+
+    const result = await storage.upsertProjects([
+      {
+        projectId: 124554,
+        projectName: "Updated project"
+      } as any
+    ], "bitrix-refresh", "full");
+
+    assert(result.created === 0, "Numeric form of an existing ID must not create a new project");
+    assert(result.updated === 1, "Numeric form of an existing ID must update the matching project");
+    assert(result.deleted === 0, "Numeric form of an existing ID must not delete the matching project");
+
+    const projects = await storage.getAllProjects();
+    assert(projects.length === 1, "The refreshed project must retain a single identity");
+    assert(projects[0].projectId === "124554", "Stored project IDs must be canonical strings");
+    assert(projects[0].projectName === "Updated project", "The matching project should be updated");
+    assert(projects[0].createdInAppAt === originalCreatedAt, "Creation metadata must be preserved");
+    assert(projects[0].lastAnalysis?.analysisId === analysis.analysisId, "Saved analysis must be preserved");
+  });
+
   await runTest("Write error propagation in safeWriteJson", async () => {
     const originalWriteJson = fs.writeJson;
     try {

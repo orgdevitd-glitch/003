@@ -10,6 +10,14 @@ const PROJECTS_FILE = path.join(DATA_DIR, "projects.json");
 const SYNC_LOGS_FILE = path.join(DATA_DIR, "sync-logs.json");
 const ANALYSIS_FILE = path.join(DATA_DIR, "analysis-results.json");
 
+function normalizeProjectId(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return null;
+  }
+  const normalized = String(value).trim();
+  return normalized || null;
+}
+
 export class JsonProjectStorage implements ProjectStorage {
   private initPromise: Promise<void>;
 
@@ -65,7 +73,13 @@ export class JsonProjectStorage implements ProjectStorage {
   }
 
   async getAllProjects(): Promise<Project[]> {
-    return await this.safeReadJson<Project[]>(PROJECTS_FILE, []);
+    const projects = await this.safeReadJson<Project[]>(PROJECTS_FILE, []);
+    return projects.map(project => {
+      const projectId = normalizeProjectId((project as any)?.projectId);
+      return projectId && projectId !== project.projectId
+        ? { ...project, projectId }
+        : project;
+    });
   }
 
   async getProjectById(projectId: string): Promise<Project | null> {
@@ -85,15 +99,19 @@ export class JsonProjectStorage implements ProjectStorage {
     const errors: any[] = [];
 
     for (const project of projects) {
-      if (!project.projectId || !project.projectName) {
+      const projectId = normalizeProjectId((project as any)?.projectId);
+      if (!projectId || !project?.projectName) {
         errors.push({
-          projectId: project.projectId,
+          projectId: (project as any)?.projectId,
           message: "projectId and projectName are required"
         });
         continue;
       }
-      incomingIds.add(project.projectId);
-      validIncomingProjects.push(project);
+      incomingIds.add(projectId);
+      validIncomingProjects.push({
+        ...project,
+        projectId
+      });
     }
 
     let created = 0;
