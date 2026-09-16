@@ -136,7 +136,11 @@ CSV-файл должен содержать на первой строчке о
 ### 3. Расчет выполнения по показателям KPI (`indicators`)
 - **Справочник направлений показателей (`indicatorDictionary.ts`)**: Обуславливает выбор формулы расчета на основе семантического типа показателя:
   1. `higher_is_better` (прямой показатель):
-     $$\text{Performance} = \frac{\text{Fact}}{\text{Plan}} \times 100$$
+     - при положительном плане:
+       $$\text{Performance} = \frac{\text{Fact}}{\text{Plan}} \times 100$$
+     - при отрицательном плане (например, плановом убытке):
+       $$\text{Performance} = \left(1 + \frac{\text{Fact} - \text{Plan}}{|\text{Plan}|}\right) \times 100$$
+       Так увеличение убытка не интерпретируется как перевыполнение плана.
   2. `lower_is_better` (обратный показатель - например, количество ошибок):
      $$\text{Performance} = \frac{\text{Plan}}{\text{Fact}} \times 100$$
      *(При факте $= 0$ возвращает $100\%$)*

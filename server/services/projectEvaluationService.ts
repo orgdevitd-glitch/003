@@ -6,6 +6,7 @@ import { Project } from "../../src/types";
 import { calculateUnifiedProjectRisk } from "../../src/utils/projectRegistryStatus";
 import { toLegacyProjectView } from "./projectViewAdapter";
 import { calculateProjectDataCompleteness } from "../../src/utils/projectCompleteness";
+import { calculateHigherIsBetterPerformance } from "../../src/utils/indicatorPerformance";
 import type { DataIssue } from "./dataValidation";
 
 export type IndicatorEvaluation = {
@@ -350,7 +351,7 @@ export function evaluateProject(
       let displayCapped: number | null = null;
       if (calculatableItem && plan !== null && plan !== 0 && fact !== null) {
         if (resolvedType === "higher_is_better") {
-          displayPerformance = (fact / plan) * 100;
+          displayPerformance = calculateHigherIsBetterPerformance(plan, fact);
         } else if (resolvedType === "lower_is_better") {
           displayPerformance = fact === 0 ? 100 : (plan / fact) * 100;
         } else if (resolvedType === "target") {
@@ -419,7 +420,7 @@ export function evaluateProject(
       // Calculation formulas for active dictionary KPI
       let performance = 100;
       if (resolvedType === "higher_is_better") {
-        performance = (fact / plan) * 100;
+        performance = calculateHigherIsBetterPerformance(plan, fact);
       } else if (resolvedType === "lower_is_better") {
         performance = fact === 0 ? 100 : (plan / fact) * 100;
       } else if (resolvedType === "target") {
