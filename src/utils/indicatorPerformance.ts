@@ -37,6 +37,17 @@ export interface IndicatorPerformanceResult {
   calculationSource?: "dictionary" | "fallback_plan_fact";
 }
 
+export const calculateHigherIsBetterPerformance = (plan: number, fact: number): number => {
+  if (plan > 0) {
+    return (fact / plan) * 100;
+  }
+
+  // A negative target represents a planned loss. Dividing two negative values
+  // reverses the meaning (a larger loss would look better), so measure the
+  // change relative to the magnitude of the planned loss instead.
+  return (1 + (fact - plan) / Math.abs(plan)) * 100;
+};
+
 export const calculateSingleIndicatorPerformance = (
   name: string,
   plan: string | number | null | undefined,
@@ -96,7 +107,7 @@ export const calculateSingleIndicatorPerformance = (
 
     let performance = 0;
     if (resolvedType === "higher_is_better") {
-      performance = (factVal / planVal) * 100;
+      performance = calculateHigherIsBetterPerformance(planVal, factVal);
     } else if (resolvedType === "lower_is_better") {
       performance = factVal === 0 ? 100 : (planVal / factVal) * 100;
     } else if (resolvedType === "target") {

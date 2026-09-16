@@ -8,6 +8,7 @@ import {
 import { NormalizedProject } from "../server/services/projectNormalizer";
 import { DEFAULT_METHODOLOGY_CONFIG } from "../server/services/methodologyConfig";
 import { DEFAULT_INDICATOR_DICTIONARY } from "../server/services/indicatorDictionary";
+import { calculateSingleIndicatorPerformance } from "../src/utils/indicatorPerformance";
 
 function runTest(name: string, fn: () => void) {
   console.log(`[TEST] Running evaluation case: ${name}...`);
@@ -323,6 +324,61 @@ runTest("Scenario 7: Indicator calculation: higher_is_better", () => {
   assert(indRes.performancePercent === 105, "Performance should be fact / plan * 100 = 105%");
   assert(indRes.cappedPerformancePercent === 100, "Capped performance should be limited to 100%");
   assert(indRes.status === "ok", "Individual status is ok");
+});
+
+runTest("Scenario 7b: Negative higher-is-better targets preserve direction", () => {
+  const proj = createMockProject({
+    monitoring: {
+      startDate: "2026-01-10",
+      regularityWeeks: 2,
+      lastMonitoringDate: "2026-05-25",
+      nextMonitoringDate: "2026-06-15",
+      isMonitoringOverdue: false
+    },
+    indicators: [
+      {
+        id: "IND-LOSS",
+        year: 2026,
+        quarter: "Q1",
+        name: "Прибыль",
+        plan: -100,
+        fact: -200,
+        periodStatus: "past",
+        isApplicableQuarter: true,
+        factStatus: "filled",
+        sourceColumns: { name: "", plan: "", fact: "" }
+      },
+      {
+        id: "IND-FUTURE-LOSS",
+        year: 2026,
+        quarter: "Q4",
+        name: "Прибыль",
+        plan: -100,
+        fact: -200,
+        periodStatus: "future",
+        isApplicableQuarter: true,
+        factStatus: "filled",
+        sourceColumns: { name: "", plan: "", fact: "" }
+      }
+    ]
+  });
+
+  const res = evaluateProject(proj, { assessmentDate: new Date("2026-06-01") });
+  const lossResult = res.indicators.indicatorResults.find(i => i.id === "IND-LOSS");
+  const futureLossResult = res.indicators.indicatorResults.find(i => i.id === "IND-FUTURE-LOSS");
+
+  assert(lossResult?.performancePercent === 0, "A doubled planned loss must evaluate to 0%, not 200%");
+  assert(lossResult?.cappedPerformancePercent === 0, "A doubled planned loss must remain 0% after capping");
+  assert(lossResult?.status === "risk", "A doubled planned loss must be classified as risk");
+  assert(res.indicators.status === "risk", "The indicator block must surface the negative-target loss as risk");
+  assert(res.projectHealth.status === "risk", "The project health must surface the negative-target loss as risk");
+  assert(futureLossResult?.performancePercent === 0, "Future-period display must use the same sign-safe calculation");
+  assert(futureLossResult?.status === "future", "Future-period values must remain excluded from current risk");
+
+  const onPlan = calculateSingleIndicatorPerformance("Прибыль", -100, -100);
+  const improved = calculateSingleIndicatorPerformance("Прибыль", -100, -50);
+  assert(onPlan?.performancePercent === 100, "Meeting a negative profit target must evaluate to 100%");
+  assert(improved?.performancePercent === 150, "Reducing a planned loss by half must evaluate to 150%");
 });
 
 // 8. Формула lower_is_better
