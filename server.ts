@@ -83,6 +83,39 @@ function verifyPassword(pwd: string): boolean {
   return false;
 }
 
+function requireBitrixIngestAuth(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const token = cleanEnv(process.env.APP_INGEST_TOKEN);
+
+  if (!token) {
+    return res.status(503).json({ success: false, error: "Ingest endpoint is not configured" });
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+
+  const trimmedHeader = authHeader.trim();
+  if (!trimmedHeader.toLowerCase().startsWith("bearer ")) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+
+  const providedToken = cleanEnv(trimmedHeader.substring(7).trim());
+  if (!providedToken) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+
+  if (providedToken !== token) {
+    return res.status(403).json({ success: false, error: "Forbidden" });
+  }
+
+  return next();
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -107,6 +140,8 @@ async function startServer() {
   }
 
   app.use(cors());
+  // Reject unauthorized imports before the 50 MB JSON parser allocates their bodies.
+  app.post("/api/bitrix/projects/import", requireBitrixIngestAuth);
   app.use((req, res, next) => {
     const limit =
       req.path === "/api/bitrix/projects/import" ? "50mb" :
@@ -268,33 +303,6 @@ async function startServer() {
 
   // 7.3. bitrix/projects/import
   app.post("/api/bitrix/projects/import", async (req, res) => {
-    const token = cleanEnv(process.env.APP_INGEST_TOKEN);
-
-    if (!token) {
-      return res.status(503).json({ success: false, error: "Ingest endpoint is not configured" });
-    }
-
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-
-    const trimmedHeader = authHeader.trim();
-    if (!trimmedHeader.toLowerCase().startsWith("bearer ")) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-
-    const rawProvidedToken = trimmedHeader.substring(7).trim();
-    const providedToken = cleanEnv(rawProvidedToken);
-
-    if (!providedToken) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-
-    if (providedToken !== token) {
-      return res.status(403).json({ success: false, error: "Forbidden" });
-    }
-
     const { projects, syncId, mode } = req.body;
 
     if (!Array.isArray(projects)) {
