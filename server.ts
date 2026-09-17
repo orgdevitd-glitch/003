@@ -9,7 +9,7 @@ import { analyzeProjectWithOpenAI } from "./server/services/openaiAnalysisServic
 import { buildProjectAnalysisPayload } from "./server/services/projectAnalysisPayloadService";
 import { fetchProjectsFromSheet, fetchCsvFromGoogleSheets, getLastImportReport, getLatestNormalizedProjects, getLatestProjectEvaluations, getLatestPortfolioEvaluation, restoreOrCalculateEvaluations, reconstructNormalizedProjectsFromLegacy } from "./server/services/googleSheetsService";
 import { handleChatAssistantMessage, getChatAssistantStatus } from "./server/services/chatAssistantService";
-import { getGoogleSheetsConfig, cleanEnv } from "./server/services/envHelper";
+import { getGoogleSheetsConfig, cleanEnv, redactUrlForDiagnostics } from "./server/services/envHelper";
 import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndicatorsReport, loadIndicatorDictionaryWithTTL } from "./server/services/indicatorDictionaryService";
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
@@ -710,23 +710,12 @@ async function startServer() {
         }
       }
 
-      const maskSpreadsheetUrl = (url: string) => {
-        if (!url) return "";
-        const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-        if (match && match[1]) {
-          const originalId = match[1];
-          const maskedId = originalId.substring(0, 4) + "..." + originalId.substring(originalId.length - 4);
-          return url.replace(originalId, maskedId);
-        }
-        return url;
-      };
-
       res.json({
         success: true,
         source: "google_sheets",
         hasGoogleSheetsUrl: config.hasGoogleSheetsUrl,
         usedEnvName: config.usedEnvName,
-        normalizedUrl: maskSpreadsheetUrl(config.normalizedUrl),
+        normalizedUrl: redactUrlForDiagnostics(config.normalizedUrl),
         gid: config.gid,
         hasGid: config.hasGid,
         canFetch,
