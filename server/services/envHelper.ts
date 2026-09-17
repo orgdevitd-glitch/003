@@ -21,6 +21,34 @@ export function isValidAssistantId(id?: string): boolean {
   return clean.startsWith("asst_");
 }
 
+export function redactUrlForDiagnostics(rawUrl: string): string {
+  const cleaned = cleanEnv(rawUrl);
+  if (!cleaned) return "";
+
+  try {
+    const url = new URL(cleaned);
+    const spreadsheetMatch =
+      url.hostname === "docs.google.com"
+        ? url.pathname.match(/^(\/spreadsheets\/d\/)([^/]+)(.*)$/)
+        : null;
+
+    if (spreadsheetMatch) {
+      const spreadsheetId = spreadsheetMatch[2];
+      const maskedId =
+        spreadsheetId.length > 8
+          ? `${spreadsheetId.slice(0, 4)}...${spreadsheetId.slice(-4)}`
+          : "****";
+      return `${url.origin}${spreadsheetMatch[1]}${maskedId}${spreadsheetMatch[3]}`;
+    }
+
+    // Custom CSV endpoints may contain signed credentials in userinfo, path,
+    // query, or fragment. Their origin is sufficient for diagnostics.
+    return `${url.origin}/…`;
+  } catch {
+    return "";
+  }
+}
+
 export function normalizeGoogleSheetsUrl(rawUrl: string): { normalizedUrl: string; gid: string; hasGid: boolean } {
   const url = cleanEnv(rawUrl);
   if (!url) {
