@@ -247,6 +247,9 @@ export default function App() {
       setLoading(false);
       return;
     }
+    const controller = new AbortController();
+    let cancelled = false;
+
     const fetchData = async () => {
       setLoading(true);
       try {
@@ -263,8 +266,10 @@ export default function App() {
         }
         const response = await fetch(`/api/projects?${urlParams.toString()}`, { 
           credentials: 'include',
-          cache: 'no-store'
+          cache: 'no-store',
+          signal: controller.signal
         });
+        if (cancelled) return;
         if (response.status === 401) {
           setIsAuthenticated(false);
           return;
@@ -285,6 +290,7 @@ export default function App() {
         }
         if (!response.ok) throw new Error('Не удалось загрузить данные из системы');
         const data = await response.json();
+        if (cancelled) return;
         if (data.success) {
           if (data.indicatorDictionary) {
             setIndicatorDictionary(data.indicatorDictionary);
@@ -323,13 +329,20 @@ export default function App() {
         }
         setError(null);
       } catch (err: any) {
+        if (cancelled || err?.name === 'AbortError') return;
         setError(err.message);
       } finally {
-        setLoading(false);
-        setIsManualSync(false);
+        if (!cancelled) {
+          setLoading(false);
+          setIsManualSync(false);
+        }
       }
     };
     fetchData();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [refreshTrigger, isAuthenticated, assessmentDateStr]);
 
   const handleLogout = async () => {
