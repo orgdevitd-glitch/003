@@ -6,6 +6,7 @@ import {
 } from "../server/services/projectNormalizer";
 import { toLegacyProjectView } from "../server/services/projectViewAdapter";
 import { analyzeSheetColumns } from "../server/services/dataContract";
+import { evaluateProject } from "../server/services/projectEvaluationService";
 
 function runTest(name: string, fn: () => void) {
   console.log(`[TEST] Running: ${name}...`);
@@ -432,4 +433,28 @@ runTest("Scenario 9: Old 'Подразделение' column must NOT be used", 
 
   const legacy = toLegacyProjectView(res);
   assert(legacy.department === "", "Legacy project.department should be empty");
+});
+
+runTest("Scenario 11: First monitoring is due one cadence after monitoring starts", () => {
+  const mockRow = {
+    "ID": "102",
+    "Название": "Новый проект до первого мониторинга",
+    "Дата начала": "01.05.2026",
+    "Дата завершения": "31.12.2026",
+    "Стадия": "В работе",
+    "Дата начала мониторинга": "01.05.2026",
+    "Регулярность мониторинга (1 раз в количество недель)": "4",
+    "Дата последнего мониторинга": ""
+  };
+
+  const res = normalizeProjectRow(mockRow, 102, {
+    assessmentDate: new Date("2026-05-20"),
+    detectedYears: [2026],
+    columnAnalysis: analyzeSheetColumns(Object.keys(mockRow))
+  });
+
+  assert(res.monitoring.nextMonitoringDate === "2026-05-29", "First monitoring must be scheduled after the configured cadence");
+  assert(res.monitoring.isMonitoringOverdue === false, "Project must not be overdue before its first planned monitoring");
+  const evaluation = evaluateProject(res, { assessmentDate: new Date("2026-05-20") });
+  assert(evaluation.monitoring.status !== "overdue", "Evaluation must not report overdue monitoring before the first planned checkpoint");
 });
