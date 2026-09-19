@@ -209,9 +209,10 @@ export function normalizeProjectRow(
     const nextObj = new Date(monLastObj.getTime() + monFreqWeeks * 7 * 24 * 60 * 60 * 1000);
     nextMonitoringDate = nextObj.toISOString().split("T")[0];
     isMonitoringOverdue = assessmentDate.getTime() > nextObj.getTime();
-  } else if (!monLastObj && monStartObj) {
-    nextMonitoringDate = monStartStr;
-    isMonitoringOverdue = assessmentDate.getTime() > monStartObj.getTime();
+  } else if (!monLastObj && monStartObj && monFreqWeeks && monFreqWeeks > 0) {
+    const firstPlannedMonitoring = new Date(monStartObj.getTime() + monFreqWeeks * 7 * 24 * 60 * 60 * 1000);
+    nextMonitoringDate = firstPlannedMonitoring.toISOString().split("T")[0];
+    isMonitoringOverdue = assessmentDate.getTime() > firstPlannedMonitoring.getTime();
   }
 
   // Bitrix url
