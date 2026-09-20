@@ -41,6 +41,7 @@ import { getProjectCardProgressMetrics } from "../utils/projectCardMetrics";
 import { getRawMilestonesListForPeriod } from "../utils/projectCalculations";
 import { resolveIndicatorDictionaryItem } from "../../server/services/indicatorDictionary";
 import { calculateSingleIndicatorPerformance } from "../utils/indicatorPerformance";
+import { getCurrentProjectAnalysis } from "../utils/projectAnalysisFreshness";
 
 const getDaysPlural = (days: number): string => {
   const lastDigit = days % 10;
@@ -119,6 +120,9 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
   const [analysis, setAnalysis] = useState<ProjectAnalysisResult | null>(
     project.lastAnalysis || null,
   );
+  const dateStr = assessmentDate || evaluation?.assessmentDate || new Date().toISOString().split("T")[0];
+  const currentAnalysis = getCurrentProjectAnalysis(analysis, dateStr);
+  const hasStaleAnalysis = analysis !== null && currentAnalysis === null;
   const [error, setError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -148,8 +152,8 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
       setExportingPdf(true);
       setPdfError(null);
       try {
-        await exportProjectToPDF(project, analysis, evaluation ? [evaluation] : null, {
-          assessmentDate,
+        await exportProjectToPDF(project, currentAnalysis, evaluation ? [evaluation] : null, {
+          assessmentDate: dateStr,
           selectedYear,
           selectedQuarter,
         });
@@ -175,7 +179,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 
     const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    const activeDateStr = assessmentDate || evaluation?.assessmentDate || new Date().toISOString().split("T")[0];
+    const activeDateStr = dateStr;
     const activeMode = assessmentDateMode || "custom";
 
     fetch(`/api/projects/${project.projectId}/analyze`, {
@@ -245,7 +249,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
     }, tickInterval);
   };
 
-  const dateStr = assessmentDate || evaluation?.assessmentDate || new Date().toISOString().split("T")[0];
   const parsedAssessmentDateForQuarter = (dateStr ? parseDateSafe(dateStr) : null) || new Date();
   const defaultQuarter = Math.floor(parsedAssessmentDateForQuarter.getMonth() / 3) + 1;
 
@@ -1568,6 +1571,14 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                   </div>
                 </div>
               )}
+              {hasStaleAnalysis && !analyzing && (
+                <div className="mt-2 bg-amber-500/15 border border-amber-500/25 p-3 rounded-xl flex items-start gap-2.5 text-amber-100 text-xs leading-normal">
+                  <AlertTriangle size={15} className="text-amber-300 shrink-0 mt-0.5" />
+                  <span>
+                    Дата сохраненного анализа не совпадает с текущей датой оценки или не указана. Запустите анализ повторно.
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="mt-auto">
@@ -1771,9 +1782,9 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
       )}
 
       {/* Основной блок анализа */}
-      {analysis && !analyzing && (
+      {currentAnalysis && !analyzing && (
         <div id="ai-analysis-full" className="pt-8">
-          <AnalysisPanel analysis={analysis} />
+          <AnalysisPanel analysis={currentAnalysis} />
         </div>
       )}
     </div>
