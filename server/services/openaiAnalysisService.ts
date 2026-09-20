@@ -94,6 +94,7 @@ aiProposal должен описывать применение ИИ внутр�
     projectId: input.project.projectId,
     createdAt: new Date().toISOString(),
     model: `Assistant (${assistantId})`,
+    assessmentDate: input.analysisPayload.assessmentContext.assessmentDate,
     ...parsedResult
   };
 }

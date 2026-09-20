@@ -170,6 +170,7 @@ export interface ProjectAnalysisResult {
   projectId: string;
   createdAt: string;
   model: string;
+  assessmentDate?: string;
 
   // New compact blocks
   summary?: {

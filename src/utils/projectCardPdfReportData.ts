@@ -12,6 +12,7 @@ import { calculateSingleIndicatorPerformance } from './indicatorPerformance';
 import { resolveIndicatorDictionaryItem } from '../../server/services/indicatorDictionary';
 import { getRawMilestonesListForPeriod } from './projectCalculations';
 import { normalizeProjectStage, UNSPECIFIED_PROJECT_STAGE } from './projectStageStyles';
+import { getCurrentProjectAnalysis } from './projectAnalysisFreshness';
 
 // HTML escaping helper
 export const escapeHtml = (value: unknown): string => {
@@ -92,9 +93,10 @@ export function buildProjectCardPdfReportData(options: {
   selectedYear: number;
   selectedQuarter: number;
 }) {
-  const { project, analysis, projectEvaluations, assessmentDate, selectedYear, selectedQuarter } = options;
+  const { project, analysis: requestedAnalysis, projectEvaluations, assessmentDate, selectedYear, selectedQuarter } = options;
 
   const dateStr = assessmentDate || new Date().toISOString().split("T")[0];
+  const analysis = getCurrentProjectAnalysis(requestedAnalysis, dateStr);
 
   // Resolve matching evaluation for the project
   const evaluation = projectEvaluations?.find(e => e.projectId === project.projectId) ?? null;
