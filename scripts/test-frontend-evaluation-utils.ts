@@ -30,6 +30,7 @@ import {
   getIndicatorPeriodCompletionMetricsFromEvaluation,
   getIndicatorYearCompletionMetricsFromEvaluation
 } from "../src/utils/evaluationIndicatorMetrics";
+import { readStoredAssessmentMode } from "../src/utils/assessmentMode";
 
 function runTest(name: string, fn: () => void) {
   console.log(`[FRONTEND_TEST] Running: ${name}...`);
@@ -178,6 +179,26 @@ runTest("Status segments and priority segments calculation verification", () => 
   assert(formatPercentLabel(p0count, totalProjects) === "66.7%", "P0 Priority should be 66.7%");
   assert(formatPercentLabel(p1count, totalProjects) === "33.3%", "P1 Priority should be 33.3%");
   assert(formatPercentLabel(p2count, totalProjects) === "", "P2 Priority (zero) must be empty");
+});
+
+runTest("stored custom assessment mode survives application reload", () => {
+  const customStorage = {
+    getItem: (key: string) => key === "pm_assessment_mode" ? "custom" : null
+  };
+  assert(
+    readStoredAssessmentMode(customStorage) === "custom",
+    "A stored custom mode must be restored before mount effects can overwrite it"
+  );
+
+  const invalidStorage = { getItem: () => "invalid" };
+  assert(readStoredAssessmentMode(invalidStorage) === "today", "Invalid stored modes must fall back to today");
+
+  const unavailableStorage = {
+    getItem: () => {
+      throw new Error("Storage unavailable");
+    }
+  };
+  assert(readStoredAssessmentMode(unavailableStorage) === "today", "Storage failures must safely fall back to today");
 });
 
 runTest("assessmentDate selection and apply lifecycle logic to prevent extra refetch", () => {

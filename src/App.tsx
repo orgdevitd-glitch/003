@@ -39,6 +39,7 @@ import { exportPortfolioToPDF } from './utils/pdfExport';
 import { buildExcelExportData } from './utils/projectTableExportData';
 import { ChatAssistantWidget } from './components/ChatAssistantWidget';
 import { parseDateSafe, formatDateSafe } from './utils/dateUtils';
+import { readStoredAssessmentMode } from './utils/assessmentMode';
 import {
   getRegistryPcStatusView,
   getRegistryRiskView,
@@ -94,7 +95,9 @@ export default function App() {
     type: "success" | "warning" | "info";
   } | null>(null);
   const [dataSource, setDataSource] = useState<any>(null);
-  const [assessmentMode, setAssessmentMode] = useState<'today' | 'custom'>('today');
+  const [assessmentMode, setAssessmentMode] = useState<'today' | 'custom'>(() =>
+    readStoredAssessmentMode(typeof window === "undefined" ? null : window.localStorage)
+  );
 
   const [customAssessmentDate, setCustomAssessmentDate] = useState<string>(() => {
     try {
