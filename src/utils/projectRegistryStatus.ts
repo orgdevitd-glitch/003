@@ -570,6 +570,7 @@ export function calculateUnifiedProjectRisk(
         if (evaluation?.milestones?.milestoneResults) {
           totalOverdueMilestones = evaluation.milestones.milestoneResults.filter(m => {
             if (m.year !== selectedYear) return false;
+            if (!m.isIncludedInProgress) return false;
             const qNum = parseInt(m.quarter.replace("Q", ""), 10);
             if (!completedQuarters.includes(qNum)) return false;
             return m.completionPercent === null || m.completionPercent < 100;
@@ -577,6 +578,7 @@ export function calculateUnifiedProjectRisk(
         } else {
           const norm = getNormalizedMilestonesForYear(project, selectedYear, assessmentDate);
           totalOverdueMilestones = norm.milestones.filter(m => {
+            if (!m.isIncludedInProgress) return false;
             const qNum = parseInt(m.quarter.replace("Q", ""), 10);
             if (!completedQuarters.includes(qNum)) return false;
             return m.completionPercent === null || m.completionPercent < 100;

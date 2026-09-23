@@ -368,6 +368,51 @@ runTest("Scenario 8: Indicator calculation: lower_is_better", () => {
   assert(idx2?.cappedPerformancePercent === 83.3, "Capped is 83.3%");
 });
 
+runTest("Scenario 8b: lower_is_better supports a zero target", () => {
+  const achieved = createMockProject({
+    indicators: [
+      {
+        id: "IND-ZERO-OK",
+        year: 2026,
+        quarter: "Q1",
+        name: "Количество ошибок",
+        plan: 0,
+        fact: 0,
+        periodStatus: "past",
+        isApplicableQuarter: true,
+        factStatus: "filled",
+        sourceColumns: { name: "", plan: "", fact: "" }
+      }
+    ]
+  });
+  const violated = createMockProject({
+    indicators: [
+      {
+        id: "IND-ZERO-RISK",
+        year: 2026,
+        quarter: "Q1",
+        name: "Количество ошибок",
+        plan: 0,
+        fact: 3,
+        periodStatus: "past",
+        isApplicableQuarter: true,
+        factStatus: "filled",
+        sourceColumns: { name: "", plan: "", fact: "" }
+      }
+    ]
+  });
+
+  const achievedResult = evaluateProject(achieved, { assessmentDate: new Date("2026-06-01") });
+  const violatedResult = evaluateProject(violated, { assessmentDate: new Date("2026-06-01") });
+
+  assert(achievedResult.indicators.calculatedIndicatorsCount === 1, "A met zero target must be calculated");
+  assert(achievedResult.indicators.indicatorResults[0].performancePercent === 100, "Zero errors against a zero target should be 100%");
+  assert(achievedResult.indicators.status === "ok", "A met zero target should be healthy");
+  assert(violatedResult.indicators.calculatedIndicatorsCount === 1, "A violated zero target must be calculated");
+  assert(violatedResult.indicators.indicatorResults[0].performancePercent === 0, "Nonzero errors against a zero target should be 0%");
+  assert(violatedResult.indicators.status === "risk", "A violated zero target should affect risk");
+});
+
 // 9. Показатель без справочника
 runTest("Scenario 9: Indicator not defined in methodology dictionary", () => {
   const proj = createMockProject({
@@ -564,6 +609,9 @@ runTest("Scenario C: Sum is 100, unweighted milestones treated as informational"
   });
   const res = evaluateProject(proj, { assessmentDate: new Date("2026-06-01") });
   assert(res.milestones.totalProgressPercent === 75, `Expected 75%, got ${res.milestones.totalProgressPercent}%`);
+  assert(res.milestones.actualMilestonesCount === 2, "Informational milestone must not count as actual");
+  assert(res.milestones.completedMilestonesCount === 1, "Only included completed milestones should be counted");
+  assert(res.milestones.overdueMilestonesCount === 1, "Informational incomplete milestone must not count as overdue");
 });
 
 // Сценарий D. Сумма явных весов больше 100

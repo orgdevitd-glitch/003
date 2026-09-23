@@ -84,15 +84,14 @@ export const calculateSingleIndicatorPerformance = (
   const planVal = sanitizeAndParseFloat(planStr);
   const factVal = sanitizeAndParseFloat(factStr);
 
-  if (planVal === 0) {
-    return null;
-  }
-
   const calculatableItem = resolveIndicatorDictionaryItem(name, undefined, true);
   const anyDictionaryItem = resolveIndicatorDictionaryItem(name, undefined, false);
 
   if (calculatableItem) {
     const resolvedType = calculatableItem.calculationType;
+    if (planVal === 0 && resolvedType !== "lower_is_better") {
+      return null;
+    }
 
     let performance = 0;
     if (resolvedType === "higher_is_better") {
@@ -114,6 +113,9 @@ export const calculateSingleIndicatorPerformance = (
   } else if (anyDictionaryItem) {
     return null;
   } else {
+    if (planVal === 0) {
+      return null;
+    }
     // Unknown indicator fallback calculation
     const performance = (factVal / planVal) * 100;
     const capped = Math.min(100, Math.max(0, performance));

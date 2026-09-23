@@ -210,8 +210,14 @@ export function evaluateProject(
     let actualCount = 0;
     let completedCount = 0;
     let overdueCount = 0;
+    const milestoneResultsById = new Map(
+      modelResult.milestones.map(m => [m.id, m])
+    );
 
     for (const m of project.milestones) {
+      if (!milestoneResultsById.get(m.id)?.isIncludedInProgress) {
+        continue;
+      }
       if (m.progressPercent === 100) {
         completedCount++;
       }
@@ -348,7 +354,12 @@ export function evaluateProject(
       skippedFutureCount++;
       let displayPerformance: number | null = null;
       let displayCapped: number | null = null;
-      if (calculatableItem && plan !== null && plan !== 0 && fact !== null) {
+      if (
+        calculatableItem &&
+        plan !== null &&
+        fact !== null &&
+        (plan !== 0 || resolvedType === "lower_is_better")
+      ) {
         if (resolvedType === "higher_is_better") {
           displayPerformance = (fact / plan) * 100;
         } else if (resolvedType === "lower_is_better") {
@@ -380,7 +391,7 @@ export function evaluateProject(
     }
 
     if (calculatableItem) {
-      if (plan === null || plan === 0) {
+      if (plan === null || (plan === 0 && resolvedType !== "lower_is_better")) {
         indicatorResults.push({
           id: ind.id,
           name: ind.name,

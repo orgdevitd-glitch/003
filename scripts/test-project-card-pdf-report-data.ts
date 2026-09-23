@@ -362,6 +362,10 @@ function runTests() {
   
   const resLower = calculateSingleIndicatorPerformance("Средний срок согласования договора", "10", "5");
   assert(resLower !== null && resLower.cappedPerformancePercent === 100 && resLower.performancePercent === 200, "lower_is_better: plan 10, fact 5 should be capped 100%, performance 200%");
+  const resZeroLowerMet = calculateSingleIndicatorPerformance("Количество ошибок", "0", "0");
+  assert(resZeroLowerMet !== null && resZeroLowerMet.performancePercent === 100, "lower_is_better: zero fact should meet a zero target");
+  const resZeroLowerMissed = calculateSingleIndicatorPerformance("Количество ошибок", "0", "3");
+  assert(resZeroLowerMissed !== null && resZeroLowerMissed.performancePercent === 0, "lower_is_better: nonzero fact should fail a zero target");
 
   const resHigher = calculateSingleIndicatorPerformance("Доля подразделений, прошедших обучение", "100", "80");
   assert(resHigher !== null && resHigher.cappedPerformancePercent === 80, "higher_is_better: plan 100, fact 80 should be 80%");

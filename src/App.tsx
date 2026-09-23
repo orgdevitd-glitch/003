@@ -883,6 +883,7 @@ export default function App() {
 
         {selectedProjectId && selectedProject ? (
           <ProjectCard 
+            key={selectedProjectId}
             project={selectedProject} 
             onRefresh={handleRefresh} 
             evaluation={getEvaluationByProjectId(projectEvaluations, selectedProjectId)}
