@@ -332,4 +332,61 @@ runTest("9. Synthetic test for calculated weights with unweighted/zero-weighted 
   assert(registryRiskResult.details.totalOverdueMilestones > 0, "Registry high risk driven by incomplete completed-period milestone");
 });
 
+runTest("10. Informational milestones do not create overdue risk", () => {
+  const project: Project = {
+    projectId: "p-informational-milestone",
+    projectName: "Informational Milestone",
+    startDate: "2026-01-01",
+    deadlineAt: "2026-12-31",
+    endDate: "2026-12-31",
+    status: "active",
+    lastPcDate: "2026-05-01",
+    monitoringFrequencyWeeks: 4,
+    _dataYear: 2026,
+    _rawByYear: {
+      "2026": {
+        milestones: {
+          q1names: "M1; M2; Informational note",
+          q1progress: "100%; 100%; 0%",
+          q1weights: "50%; 50%;"
+        }
+      }
+    }
+  } as any;
+
+  const rawResult = calculateUnifiedProjectRisk(project, null, "2026-05-15", true);
+  assert(rawResult.details.totalOverdueMilestones === 0, "Raw fallback must ignore informational milestones");
+  assert(rawResult.riskLevel === "Низкий", `Expected raw fallback risk Низкий, got ${rawResult.riskLevel}`);
+
+  const evaluation: ProjectEvaluation = {
+    projectId: project.projectId,
+    dataQuality: { status: "ok", completenessPercent: 100, errorsCount: 0, warningsCount: 0, issuesCount: 0 },
+    milestones: {
+      status: "ok",
+      totalProgressPercent: 100,
+      actualProgressPercent: 100,
+      totalWeightPercent: 100,
+      weightControlStatus: "ok",
+      milestonesCount: 3,
+      actualMilestonesCount: 2,
+      completedMilestonesCount: 2,
+      overdueMilestonesCount: 0,
+      milestoneResults: [
+        { id: "M1", name: "M1", year: 2026, quarter: "Q1", originalWeightPercent: 50, effectiveWeightPercent: 50, weightSource: "explicit", isIncludedInProgress: true, completionPercent: 100, contributionPercent: 50 },
+        { id: "M2", name: "M2", year: 2026, quarter: "Q1", originalWeightPercent: 50, effectiveWeightPercent: 50, weightSource: "explicit", isIncludedInProgress: true, completionPercent: 100, contributionPercent: 50 },
+        { id: "M3", name: "Informational note", year: 2026, quarter: "Q1", originalWeightPercent: null, effectiveWeightPercent: 0, weightSource: "informational", isIncludedInProgress: false, completionPercent: 0, contributionPercent: 0 }
+      ]
+    },
+    indicators: { status: "not_applicable", averagePerformancePercent: null, cappedAveragePerformancePercent: null, calculatedIndicatorsCount: 0, skippedFutureIndicatorsCount: 0, missingDictionaryCount: 0, indicatorResults: [] },
+    monitoring: { status: "ok", lastMonitoringDate: "2026-05-01", nextMonitoringDate: "2026-05-29", overdueDays: null },
+    projectHealth: { status: "ok", score: 100, mainReasons: [] },
+    assessmentDate: "2026-05-15",
+    explanations: []
+  };
+
+  const evaluationResult = calculateUnifiedProjectRisk(project, evaluation, "2026-05-15", true);
+  assert(evaluationResult.details.totalOverdueMilestones === 0, "Evaluation path must ignore informational milestones");
+  assert(evaluationResult.riskLevel === "Низкий", `Expected evaluation risk Низкий, got ${evaluationResult.riskLevel}`);
+});
+
 console.log("[UNIFIED_RISK_TEST] ALL PARAMS AND REGRESSION TESTS COMPLETED SUCCESSFULLY!\n");

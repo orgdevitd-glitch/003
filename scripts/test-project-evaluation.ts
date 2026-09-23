@@ -609,6 +609,9 @@ runTest("Scenario C: Sum is 100, unweighted milestones treated as informational"
   });
   const res = evaluateProject(proj, { assessmentDate: new Date("2026-06-01") });
   assert(res.milestones.totalProgressPercent === 75, `Expected 75%, got ${res.milestones.totalProgressPercent}%`);
+  assert(res.milestones.actualMilestonesCount === 2, "Informational milestone must not count as actual");
+  assert(res.milestones.completedMilestonesCount === 1, "Only included completed milestones should be counted");
+  assert(res.milestones.overdueMilestonesCount === 1, "Informational incomplete milestone must not count as overdue");
 });
 
 // Сценарий D. Сумма явных весов больше 100

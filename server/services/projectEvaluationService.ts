@@ -210,8 +210,14 @@ export function evaluateProject(
     let actualCount = 0;
     let completedCount = 0;
     let overdueCount = 0;
+    const milestoneResultsById = new Map(
+      modelResult.milestones.map(m => [m.id, m])
+    );
 
     for (const m of project.milestones) {
+      if (!milestoneResultsById.get(m.id)?.isIncludedInProgress) {
+        continue;
+      }
       if (m.progressPercent === 100) {
         completedCount++;
       }
