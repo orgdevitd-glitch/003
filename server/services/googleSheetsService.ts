@@ -68,6 +68,29 @@ interface FetchResult {
   contentType?: string;
 }
 
+type CsvParseError = {
+  type: string;
+  code: string;
+  message: string;
+  row?: number;
+};
+
+export function assertNoCsvParseErrors(errors: CsvParseError[]): void {
+  if (!errors || errors.length === 0) return;
+
+  const details = errors
+    .slice(0, 3)
+    .map(error => {
+      const row = typeof error.row === "number" ? ` at row ${error.row + 1}` : "";
+      return `${error.code}${row}: ${error.message}`;
+    })
+    .join("; ");
+
+  throw new Error(
+    `Google Sheets returned malformed or incomplete CSV data (${errors.length} parse error${errors.length === 1 ? "" : "s"}): ${details}`
+  );
+}
+
 export async function fetchCsvFromGoogleSheets(url: string): Promise<FetchResult> {
   try {
     const response = await fetch(url, {
@@ -203,6 +226,7 @@ export async function fetchProjectsFromSheet(assessmentDate: Date = new Date()):
     header: true,
     skipEmptyLines: true,
   });
+  assertNoCsvParseErrors(results.errors);
 
   const rawHeaders = results.meta.fields || [];
   const parsedHeaders = rawHeaders.map((h, idx) => normalizeHeaderName(h, idx));
