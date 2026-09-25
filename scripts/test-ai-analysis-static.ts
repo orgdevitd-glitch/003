@@ -63,6 +63,29 @@ runTest("Verify ai-analysis-full container in ProjectCard is free of animate-sof
   assert(content.includes('id="ai-analysis-full" className="pt-8"'), "ai-analysis-full container should use static pt-8 class");
 });
 
+runTest("Successful analysis reloads projects without requesting a full sync", () => {
+  const appPath = path.join(process.cwd(), "src", "App.tsx");
+  const cardPath = path.join(process.cwd(), "src", "components", "ProjectCard.tsx");
+  const appContent = fs.readFileSync(appPath, "utf8");
+  const cardContent = fs.readFileSync(cardPath, "utf8");
+
+  const reloadStart = appContent.indexOf("const handleProjectReload = () => {");
+  const reloadEnd = appContent.indexOf("\n  };", reloadStart);
+  assert(reloadStart !== -1 && reloadEnd !== -1, "App must define a dedicated project reload callback");
+
+  const reloadBody = appContent.slice(reloadStart, reloadEnd);
+  assert(reloadBody.includes("setRefreshTrigger"), "Project reload must refetch saved analysis");
+  assert(!reloadBody.includes("setIsManualSync"), "Project reload must not request a destructive full sync");
+  assert(
+    appContent.includes("onAnalysisComplete={handleProjectReload}"),
+    "ProjectCard must receive the non-sync reload callback",
+  );
+  assert(
+    cardContent.includes("onAnalysisComplete();"),
+    "ProjectCard must reload projects after a successful analysis",
+  );
+});
+
 console.log("-----------------------------------------------------------");
 console.log("All AI static-analysis verification test cases passed successfully!");
 console.log("-----------------------------------------------------------");

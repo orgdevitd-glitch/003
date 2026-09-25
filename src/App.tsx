@@ -352,6 +352,11 @@ export default function App() {
     });
   };
 
+  const handleProjectReload = () => {
+    setLastRefreshed(new Date());
+    setRefreshTrigger(prev => prev + 1);
+  };
+
   const handleExportExcel = () => {
     requireAdvancedAccess("exportData", () => {
       const savedVisibleColumns = localStorage.getItem('visible_columns_v1');
@@ -884,7 +889,7 @@ export default function App() {
         {selectedProjectId && selectedProject ? (
           <ProjectCard 
             project={selectedProject} 
-            onRefresh={handleRefresh} 
+            onAnalysisComplete={handleProjectReload}
             evaluation={getEvaluationByProjectId(projectEvaluations, selectedProjectId)}
             assessmentDate={assessmentDateStr}
             assessmentDateMode={assessmentMode}

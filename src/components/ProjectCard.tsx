@@ -94,7 +94,7 @@ export const parseIndicatorPeriod = (period: string | null | undefined): {
 
 interface ProjectCardProps {
   project: Project;
-  onRefresh: () => void;
+  onAnalysisComplete: () => void;
   evaluation?: ProjectEvaluation | null;
   assessmentDate?: string;
   assessmentDateMode?: "today" | "custom";
@@ -102,7 +102,7 @@ interface ProjectCardProps {
 
 export const ProjectCard: React.FC<ProjectCardProps> = ({
   project,
-  onRefresh,
+  onAnalysisComplete,
   evaluation,
   assessmentDate,
   assessmentDateMode,
@@ -233,7 +233,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
             if (res) {
               if (res.success) {
                 setAnalysis(res.analysis);
-                onRefresh();
+                onAnalysisComplete();
               } else {
                 setError(res.error || "Ошибка при запуске ИИ-анализа");
               }
