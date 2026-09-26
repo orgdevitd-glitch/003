@@ -75,6 +75,12 @@ runTest("List Parser splitListCell", () => {
 
   const r2 = splitListCell("Item 1, Item 2, Item 3");
   assert(r2.status === "warning", "List with commas but no semicolons should return warning");
+
+  const r3 = splitListCell("Item 1\nItem 2\r\nItem 3");
+  assertDeepEqual(r3.value, ["Item 1", "Item 2", "Item 3"], "Should parse line-break separated items");
+
+  const r4 = splitListCell("Item 1\r\n\r\nItem 3", { preserveEmpty: true });
+  assertDeepEqual(r4.value, ["Item 1", "", "Item 3"], "Should preserve blank line-separated slots");
 });
 
 runTest("Date Parser parseDateCell", () => {
