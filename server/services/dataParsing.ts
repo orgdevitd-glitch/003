@@ -7,7 +7,7 @@ export interface ParseResult<T> {
 }
 
 /**
- * Parses a semicolon separated list cell
+ * Parses a semicolon or line-break separated list cell.
  */
 export function splitListCell(
   value: any,
@@ -39,8 +39,11 @@ export function splitListCell(
     }
   }
 
+  // Google Sheets users commonly create lists with Alt+Enter. Normalize CRLF
+  // first so preserveEmpty keeps one aligned slot per blank list entry.
   const items = rawStr
-    .split(";")
+    .replace(/\r\n?/g, "\n")
+    .split(/[;\n]/)
     .map(x => x.trim());
 
   // Default: drop empty slots. Callers that need positional alignment (вехи/KPI)

@@ -433,3 +433,37 @@ runTest("Scenario 9: Old 'Подразделение' column must NOT be used", 
   const legacy = toLegacyProjectView(res);
   assert(legacy.department === "", "Legacy project.department should be empty");
 });
+
+// 10. Regression test: Google Sheets Alt+Enter lists retain every aligned item
+runTest("Scenario 10: Line-break separated milestones and indicators", () => {
+  const mockRow = {
+    "ID": "102",
+    "Название": "Проект со списками по строкам",
+    "Дата начала": "01.01.2026",
+    "Дата завершения": "31.12.2026",
+    "Стадия": "В работе",
+    "Вид": "Проект",
+    "Вехи 2026 Q1": "Старт\nПилот\r\nЗапуск",
+    "% выполнения Вехи 2026 Q1": "100\n50\r\n25",
+    "Вес вехи 2026 Q1": "20\n30\r\n50",
+    "Показатели проекта 2026 Q1": "Срок\nКачество",
+    "План Показатели проекта 2026 Q1": "10\n100",
+    "Факт Показатели проекта 2026 Q1": "8\n90"
+  };
+
+  const context: NormalizationContext = {
+    assessmentDate: new Date("2026-06-01"),
+    detectedYears: [2026],
+    columnAnalysis: analyzeSheetColumns(Object.keys(mockRow))
+  };
+
+  const res = normalizeProjectRow(mockRow, 102, context);
+  assert(res.milestones.length === 3, "All line-break separated milestones must be retained");
+  assert(res.milestones[1].name === "Пилот", "Milestone names must remain positionally aligned");
+  assert(res.milestones[1].progressPercent === 50, "Milestone progress must remain positionally aligned");
+  assert(res.milestones[1].weightPercent === 30, "Milestone weights must remain positionally aligned");
+  assert(res.indicators.length === 2, "All line-break separated indicators must be retained");
+  assert(res.indicators[1].name === "Качество", "Indicator names must remain positionally aligned");
+  assert(res.indicators[1].plan === 100, "Indicator plans must remain positionally aligned");
+  assert(res.indicators[1].fact === 90, "Indicator facts must remain positionally aligned");
+});
