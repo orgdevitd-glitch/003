@@ -13,6 +13,7 @@ import { getGoogleSheetsConfig, cleanEnv } from "./server/services/envHelper";
 import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndicatorsReport, loadIndicatorDictionaryWithTTL } from "./server/services/indicatorDictionaryService";
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
+import { toPublicNormalizedProject } from "./server/services/projectNormalizer";
 import { geoAccessMiddleware } from "./server/services/geoAccessService";
 import { 
   getAdvancedAccessConfig, 
@@ -487,7 +488,7 @@ async function startServer() {
       res.json({
         success: true,
         projects,
-        normalizedProjects: getLatestNormalizedProjects(),
+        normalizedProjects: getLatestNormalizedProjects().map(toPublicNormalizedProject),
         projectEvaluations,
         portfolioEvaluation: getLatestPortfolioEvaluation(),
         stats,

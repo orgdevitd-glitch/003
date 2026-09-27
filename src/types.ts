@@ -419,7 +419,7 @@ export interface NormalizedProject {
     issues: DataIssue[];
   };
   source: {
-    rawRow: Record<string, unknown>;
+    rawRow?: Record<string, unknown>;
     detectedYears: number[];
   };
 }
