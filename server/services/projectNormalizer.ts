@@ -129,6 +129,24 @@ export type NormalizedProject = {
   };
 };
 
+export type PublicNormalizedProject = Omit<NormalizedProject, "source"> & {
+  source: {
+    detectedYears: number[];
+  };
+};
+
+/**
+ * Removes server-only import provenance before normalized projects cross the API boundary.
+ * rawRow can contain unknown spreadsheet columns that are not part of the dashboard contract.
+ */
+export function toPublicNormalizedProject(project: NormalizedProject): PublicNormalizedProject {
+  const { rawRow: _rawRow, ...publicSource } = project.source;
+  return {
+    ...project,
+    source: publicSource
+  };
+}
+
 export interface NormalizationContext {
   assessmentDate?: Date;
   detectedYears?: number[];
