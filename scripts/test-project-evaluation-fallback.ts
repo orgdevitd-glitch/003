@@ -101,6 +101,7 @@ async function main() {
       getLatestProjectEvaluations,
       getLatestPortfolioEvaluation,
       getLatestNormalizedProjects,
+      getLastImportReport,
       resetLatestEvaluationsForTesting,
       buildProjectEvaluationSignature,
       buildIndicatorDictionarySignature
@@ -117,6 +118,7 @@ async function main() {
     const PORTFOLIO_EVAL_FILE = path.join(TEST_DATA_DIR, "portfolio-evaluation.json");
     const NORMALIZED_PROJECTS_FILE = path.join(TEST_DATA_DIR, "normalized-projects.json");
     const EVALUATIONS_META_FILE = path.join(TEST_DATA_DIR, "evaluations-meta.json");
+    const IMPORT_REPORT_FILE = path.join(TEST_DATA_DIR, "sheets-import-report.json");
 
     // 1. Scenario: RAM is empty, cache doesn't exist, projects are present.
     // Expectation: Evaluations are calculated, stored in cache and RAM is not empty.
@@ -178,6 +180,57 @@ async function main() {
       const evaluations = getLatestProjectEvaluations();
       assert(evaluations.length === 1, "Should have 1 evaluation");
       assert(evaluations[0].monitoring.status === "overdue", "Expected status overdue because disk cache was stale");
+    });
+
+    await runTest("Stale cache recalculation preserves import errors and report", async () => {
+      const importReport = {
+        structureStatus: "error",
+        rowCount: 1,
+        projectCount: 1,
+        errorsCount: 1,
+        warningsCount: 0,
+        issues: [{
+          severity: "error",
+          rowIndex: 2,
+          projectId: "P-101",
+          projectName: "Test Project Fallback",
+          field: "Дата начала",
+          code: "START_DATE_INVALID",
+          message: "Некорректная дата начала"
+        }],
+        columnAnalysis: {},
+        rowsWithErrors: [2],
+        rowsWithWarnings: [],
+        detectedYears: [2026],
+        assessmentDate: "2026-06-30T00:00:00.000Z"
+      };
+      await fs.writeJson(IMPORT_REPORT_FILE, importReport);
+      resetLatestEvaluationsForTesting();
+
+      // The preceding scenario cached 2026-06-30, so this date forces the
+      // fallback recalculation path rather than a disk-cache hit.
+      await restoreOrCalculateEvaluations(mockProjects, new Date("2026-07-01"));
+
+      const evaluation = getLatestProjectEvaluations()[0];
+      assert(
+        (evaluation.dataQuality as any).importErrorsCount === 1,
+        "Fallback recalculation must include persisted import errors"
+      );
+      assert(
+        evaluation.explanations.some(message => message.includes("START_DATE_INVALID")),
+        "Evaluation must retain the persisted import error details"
+      );
+      assert(
+        getLastImportReport()?.issues?.[0]?.code === "START_DATE_INVALID",
+        "Import diagnostics must remain available in RAM"
+      );
+
+      const persistedReport = await fs.readJson(IMPORT_REPORT_FILE);
+      assert(
+        persistedReport?.issues?.[0]?.code === "START_DATE_INVALID",
+        "Fallback recalculation must not overwrite the authoritative import report"
+      );
+      await fs.remove(IMPORT_REPORT_FILE);
     });
 
     // Scenario C: project data changed

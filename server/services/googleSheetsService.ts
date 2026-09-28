@@ -5,11 +5,11 @@ import path from "path";
 import crypto from "crypto";
 import { Project, ProjectTask, ProjectIndicator, ProjectStatus, TaskStatus } from "../../src/types";
 import { getGoogleSheetsConfig } from "./envHelper";
-import { validateProjectRows, ImportValidationReport } from "./dataValidation";
+import { validateProjectRows, ImportValidationReport, DataIssue } from "./dataValidation";
 import { normalizeProjectRows, NormalizedProject } from "./projectNormalizer";
 import { toLegacyProjectView } from "./projectViewAdapter";
 import { analyzeSheetColumns, normalizeHeaderName, normalizeRowKeys } from "./dataContract";
-import { evaluateProjects, calculatePortfolioEvaluation, ProjectEvaluation, PortfolioEvaluation } from "./projectEvaluationService";
+import { evaluateProject, evaluateProjects, calculatePortfolioEvaluation, ProjectEvaluation, PortfolioEvaluation } from "./projectEvaluationService";
 import { getIndicatorDictionary, IndicatorDictionaryItem } from "./indicatorDictionary";
 
 export type EvaluationCacheMeta = {
@@ -261,15 +261,7 @@ export async function fetchProjectsFromSheet(assessmentDate: Date = new Date()):
   
   // Calculate project evaluations & portfolio metrics
   const indicatorDictionary = getIndicatorDictionary();
-  const importIssuesByProjectId: Record<string, import("./dataValidation").DataIssue[]> = {};
-  if (lastImportReport?.issues?.length) {
-    for (const issue of lastImportReport.issues) {
-      const key = String(issue.projectId || "");
-      if (!key) continue;
-      if (!importIssuesByProjectId[key]) importIssuesByProjectId[key] = [];
-      importIssuesByProjectId[key].push(issue);
-    }
-  }
+  const importIssuesByProjectId = buildImportIssuesByProjectId(lastImportReport);
   const evaluations = evaluateProjects(normalized, {
     assessmentDate,
     indicatorDictionary,
@@ -309,6 +301,34 @@ const PORTFOLIO_EVAL_FILE = path.join(DATA_DIR, "portfolio-evaluation.json");
 const NORMALIZED_PROJECTS_FILE = path.join(DATA_DIR, "normalized-projects.json");
 const SHEETS_IMPORT_REPORT_FILE = path.join(DATA_DIR, "sheets-import-report.json");
 const EVALUATIONS_META_FILE = path.join(DATA_DIR, "evaluations-meta.json");
+
+function buildImportIssuesByProjectId(
+  report: ImportValidationReport | null
+): Record<string, DataIssue[]> {
+  const issuesByProjectId: Record<string, DataIssue[]> = {};
+  for (const issue of report?.issues || []) {
+    const key = String(issue.projectId || "");
+    if (!key) continue;
+    if (!issuesByProjectId[key]) issuesByProjectId[key] = [];
+    issuesByProjectId[key].push(issue);
+  }
+  return issuesByProjectId;
+}
+
+async function loadPersistedImportReport(): Promise<ImportValidationReport | null> {
+  try {
+    if (!(await fs.pathExists(SHEETS_IMPORT_REPORT_FILE))) return null;
+    const report = await fs.readJson(SHEETS_IMPORT_REPORT_FILE);
+    if (!report || !Array.isArray(report.issues)) {
+      console.warn("[GoogleSheets-Cache] Ignoring invalid persisted Sheets import report.");
+      return null;
+    }
+    return report as ImportValidationReport;
+  } catch (err) {
+    console.warn("[GoogleSheets-Cache] Failed to load persisted Sheets import report:", err);
+    return null;
+  }
+}
 
 export function buildProjectEvaluationSignature(projects: Project[]): string {
   if (!projects || projects.length === 0) return "";
@@ -434,7 +454,8 @@ async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
 
 export async function saveEvaluationsToDisk(
   projects: Project[],
-  assessmentDate: Date
+  assessmentDate: Date,
+  persistImportReport: boolean = true
 ): Promise<void> {
   if (!projects || projects.length === 0) {
     // Under Rule 5: do not overwrite valid cached data with empty data
@@ -458,7 +479,9 @@ export async function saveEvaluationsToDisk(
     await writeJsonAtomic(EVALUATIONS_FILE, latestProjectEvaluations);
     await writeJsonAtomic(PORTFOLIO_EVAL_FILE, latestPortfolioEvaluation);
     await writeJsonAtomic(NORMALIZED_PROJECTS_FILE, latestNormalizedProjects);
-    await writeJsonAtomic(SHEETS_IMPORT_REPORT_FILE, lastImportReport);
+    if (persistImportReport) {
+      await writeJsonAtomic(SHEETS_IMPORT_REPORT_FILE, lastImportReport);
+    }
     await writeJsonAtomic(EVALUATIONS_META_FILE, meta);
 
     // Keep legacy projects.json in sync so fallback works without Sheets
@@ -597,10 +620,7 @@ export async function restoreOrCalculateEvaluations(
       const evTemp = await fs.readJson(EVALUATIONS_FILE);
       const portTemp = await fs.readJson(PORTFOLIO_EVAL_FILE);
       const normTemp = await fs.readJson(NORMALIZED_PROJECTS_FILE);
-      let reportTemp = null;
-      if (await fs.pathExists(SHEETS_IMPORT_REPORT_FILE)) {
-        reportTemp = await fs.readJson(SHEETS_IMPORT_REPORT_FILE);
-      }
+      const reportTemp = await loadPersistedImportReport();
 
       if (Array.isArray(evTemp) && Array.isArray(normTemp) && isStateValid(projects, assessmentDate, metaTemp, evTemp)) {
         latestProjectEvaluations = evTemp;
@@ -624,7 +644,16 @@ export async function restoreOrCalculateEvaluations(
     try {
       const normalized = reconstructNormalizedProjectsFromLegacy(projects, assessmentDate);
       const indicatorDictionary = getIndicatorDictionary();
-      const evaluations = evaluateProjects(normalized, { assessmentDate, indicatorDictionary });
+      const persistedImportReport = lastImportReport || await loadPersistedImportReport();
+      if (persistedImportReport) {
+        lastImportReport = persistedImportReport;
+      }
+      const importIssuesByProjectId = buildImportIssuesByProjectId(persistedImportReport);
+      const evaluations = normalized.map(project => evaluateProject(project, {
+        assessmentDate,
+        indicatorDictionary,
+        importIssuesByProjectId
+      }));
       
       latestProjectEvaluations = evaluations;
       latestPortfolioEvaluation = calculatePortfolioEvaluation(normalized, evaluations, { assessmentDate, indicatorDictionary });
@@ -637,7 +666,9 @@ export async function restoreOrCalculateEvaluations(
 
       console.log("[GoogleSheets-Cache] Successfully recalculated evaluations from projects.");
       const finalProjects = normalized.map(toLegacyProjectView);
-      await saveEvaluationsToDisk(finalProjects, assessmentDate);
+      // A fallback recalculation did not validate fresh Sheets rows, so it must
+      // never replace the last authoritative import report.
+      await saveEvaluationsToDisk(finalProjects, assessmentDate, false);
     } catch (calcErr) {
       console.error("[GoogleSheets-Cache] Critical failure while recalculating evaluations from projects list:", calcErr);
       if (!latestProjectEvaluations) latestProjectEvaluations = [];
