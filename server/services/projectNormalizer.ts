@@ -259,6 +259,12 @@ export function normalizeProjectRow(
         const wItems = splitListCell(wRaw, { preserveEmpty: true }).value || [];
 
         mItems.forEach((mName, mIdx) => {
+          // Empty list slots preserve alignment with progress/weight cells, but
+          // they are not milestones and must not consume weight or become overdue.
+          if (!mName.trim()) {
+            return;
+          }
+
           const pStr = pItems[mIdx] || "";
           const wStr = wItems[mIdx] || "";
 

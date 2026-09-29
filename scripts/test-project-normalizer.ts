@@ -6,6 +6,7 @@ import {
 } from "../server/services/projectNormalizer";
 import { toLegacyProjectView } from "../server/services/projectViewAdapter";
 import { analyzeSheetColumns } from "../server/services/dataContract";
+import { evaluateProject } from "../server/services/projectEvaluationService";
 
 function runTest(name: string, fn: () => void) {
   console.log(`[TEST] Running: ${name}...`);
@@ -58,6 +59,56 @@ runTest("Scenario 1: Project with milestones in a single year", () => {
   assert(m1.weightPercent === 20, "Milestone 1 weight mismatch");
   assert(m1.year === 2026, "Milestone year mismatch");
   assert(m1.quarter === "Q1", "Milestone quarter mismatch");
+});
+
+runTest("Blank milestone name slots do not distort progress", () => {
+  const assessmentDate = new Date("2026-06-01");
+  const trailingBlankRow = {
+    "ID": "blank-trailing",
+    "Название": "Проект с пустым слотом",
+    "Дата начала": "01.01.2026",
+    "Дата завершения": "31.12.2026",
+    "Стадия": "В работе",
+    "Вехи 2026 Q1": "Реальная веха;",
+    "% выполнения Вехи 2026 Q1": "100%; 0%"
+  };
+  const trailingBlankProject = normalizeProjectRow(trailingBlankRow, 3, {
+    assessmentDate,
+    detectedYears: [2026],
+    columnAnalysis: analyzeSheetColumns(Object.keys(trailingBlankRow))
+  });
+
+  assert(trailingBlankProject.milestones.length === 1, "Blank trailing slot must not create a milestone");
+  const trailingBlankEvaluation = evaluateProject(trailingBlankProject, { assessmentDate });
+  assert(
+    trailingBlankEvaluation.milestones.totalProgressPercent === 100,
+    "Blank trailing slot must not consume half of the milestone weight"
+  );
+  assert(
+    trailingBlankEvaluation.milestones.overdueMilestonesCount === 0,
+    "Blank trailing slot must not create an overdue milestone"
+  );
+
+  const middleBlankRow = {
+    ...trailingBlankRow,
+    "ID": "blank-middle",
+    "Вехи 2026 Q1": "Первая;;Последняя",
+    "% выполнения Вехи 2026 Q1": "100%; 0%; 50%"
+  };
+  const middleBlankProject = normalizeProjectRow(middleBlankRow, 4, {
+    assessmentDate,
+    detectedYears: [2026],
+    columnAnalysis: analyzeSheetColumns(Object.keys(middleBlankRow))
+  });
+
+  assert(middleBlankProject.milestones.length === 2, "Blank middle slot must not create a milestone");
+  assert(middleBlankProject.milestones[1].name === "Последняя", "Names must retain their original value alignment");
+  assert(middleBlankProject.milestones[1].progressPercent === 50, "Progress must retain its original slot alignment");
+  const middleBlankEvaluation = evaluateProject(middleBlankProject, { assessmentDate });
+  assert(
+    middleBlankEvaluation.milestones.totalProgressPercent === 75,
+    "Only named milestones should participate in equal weight progress"
+  );
 });
 
 // 2. Проект с вехами в нескольких годах
