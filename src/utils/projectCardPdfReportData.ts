@@ -23,6 +23,12 @@ export const escapeHtml = (value: unknown): string => {
     .replace(/'/g, "&#039;");
 };
 
+const joinAnalysisText = (...parts: Array<string | null | undefined>): string =>
+  parts
+    .map(part => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(": ");
+
 // Period parser helper
 export const parseIndicatorPeriod = (period: string | null | undefined): {
   label: string;
@@ -579,23 +585,35 @@ export function buildProjectCardPdfReportData(options: {
   let analysisBlocks = null;
 
   if (analysis) {
+    const currentManagementConclusion = joinAnalysisText(
+      analysis.summary?.title,
+      analysis.summary?.text
+    );
+    const currentProjectProposal = analysis.priorityActions
+      ?.map(action => `${action.priority}. ${action.action} — ${action.expectedResult}`)
+      .join(" ");
+    const currentAiProposal = joinAnalysisText(
+      analysis.aiProposal?.title,
+      analysis.aiProposal?.text
+    );
+
     analysisBlocks = {
       createdAt: analysis.createdAt ? formatDateSafe(analysis.createdAt) : "—",
-      managementConclusion: analysis.managementConclusion || "—",
+      managementConclusion: currentManagementConclusion || analysis.managementConclusion || "—",
       shortAnalysis: {
-        dataCompleteness: analysis.shortAnalysis?.dataCompleteness || "—",
-        pcTimeliness: analysis.shortAnalysis?.pcTimeliness || "—",
-        weightedTaskProgress: analysis.shortAnalysis?.weightedTaskProgress || "—",
-        deviation: analysis.shortAnalysis?.deviation || "—",
-        indicators: analysis.shortAnalysis?.indicators || "—"
+        dataCompleteness: analysis.directionAnalysis?.data?.summary || analysis.shortAnalysis?.dataCompleteness || "—",
+        pcTimeliness: analysis.directionAnalysis?.pc?.summary || analysis.shortAnalysis?.pcTimeliness || "—",
+        weightedTaskProgress: analysis.directionAnalysis?.milestones?.summary || analysis.shortAnalysis?.weightedTaskProgress || "—",
+        deviation: analysis.directionAnalysis?.milestones?.summary || analysis.shortAnalysis?.deviation || "—",
+        indicators: analysis.directionAnalysis?.indicators?.summary || analysis.shortAnalysis?.indicators || "—"
       },
       detailedAnalysis: {
-        dataCompleteness: analysis.detailedAnalysis?.dataCompleteness || "—",
-        pcTimeliness: analysis.detailedAnalysis?.pcTimeliness || "—",
-        lagOrAdvance: analysis.detailedAnalysis?.lagOrAdvance || "—",
-        indicators: analysis.detailedAnalysis?.indicators || "—",
-        projectProposal: analysis.detailedAnalysis?.projectProposal || "Предложений нет.",
-        aiProposal: analysis.detailedAnalysis?.aiProposal || "Предложений нет."
+        dataCompleteness: analysis.directionAnalysis?.data?.summary || analysis.detailedAnalysis?.dataCompleteness || "—",
+        pcTimeliness: analysis.directionAnalysis?.pc?.summary || analysis.detailedAnalysis?.pcTimeliness || "—",
+        lagOrAdvance: analysis.directionAnalysis?.milestones?.summary || analysis.detailedAnalysis?.lagOrAdvance || "—",
+        indicators: analysis.directionAnalysis?.indicators?.summary || analysis.detailedAnalysis?.indicators || "—",
+        projectProposal: currentProjectProposal || analysis.detailedAnalysis?.projectProposal || "Предложений нет.",
+        aiProposal: currentAiProposal || analysis.detailedAnalysis?.aiProposal || "Предложений нет."
       },
       keyProblems: Array.isArray(analysis.keyProblems) ? analysis.keyProblems : [],
       priorityActions: Array.isArray(analysis.priorityActions) ? analysis.priorityActions : []
