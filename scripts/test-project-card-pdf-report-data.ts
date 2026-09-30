@@ -1,4 +1,4 @@
-import { Project, ProjectEvaluation } from "../src/types";
+import { Project, ProjectAnalysisResult, ProjectEvaluation } from "../src/types";
 import { buildProjectCardPdfReportData, escapeHtml } from "../src/utils/projectCardPdfReportData";
 import { DEFAULT_INDICATOR_DICTIONARY } from "../server/services/indicatorDictionary";
 import { calculateSingleIndicatorPerformance } from "../src/utils/indicatorPerformance";
@@ -209,6 +209,74 @@ function runTests() {
   assert(reportDataFallback.progressMetrics.indicatorsQuarterSource === "fallback-расчет", "KPI source must be fallback-расчет");
 
   console.log("✓ Correctly falls back to local mathematical rules when evaluation is missing.");
+
+  // Current AI response schema must populate the analytical PDF page.
+  const currentAnalysis: ProjectAnalysisResult = {
+    analysisId: "analysis-current-schema",
+    projectId: mockProject.projectId,
+    createdAt: "2027-06-15T12:00:00.000Z",
+    model: "test",
+    summary: {
+      status: "red",
+      title: "Запуск заблокирован",
+      text: "Критическая веха не завершена.",
+      mainRiskSource: "Вехи",
+      goalImpact: "Запуск переносится."
+    },
+    keyProblems: [],
+    priorityActions: [{
+      priority: 1,
+      action: "Завершить критическую веху",
+      linkedProblem: "Срыв запуска",
+      expectedResult: "Снять блокировку запуска",
+      owner: "Руководитель проекта",
+      deadlineHint: "До следующего ПК"
+    }],
+    directionAnalysis: {
+      data: { summary: "Данные заполнены.", evidence: [] },
+      pc: { summary: "ПК проводится своевременно.", evidence: [] },
+      milestones: { summary: "Критическая веха просрочена.", evidence: [] },
+      indicators: { summary: "Показатели ниже плана.", evidence: [] }
+    },
+    aiProposal: {
+      title: "ИИ-помощник",
+      text: "Автоматизировать контроль вех.",
+      projectUseCases: ["Контроль сроков"],
+      limitations: null
+    }
+  };
+
+  const reportDataWithCurrentAnalysis = buildProjectCardPdfReportData({
+    project: mockProject,
+    analysis: currentAnalysis,
+    projectEvaluations: [mockEvaluation],
+    selectedYear: 2027,
+    selectedQuarter: 2,
+    assessmentDate: "2027-06-15"
+  });
+
+  assert(
+    reportDataWithCurrentAnalysis.analysisBlocks?.managementConclusion ===
+      "Запуск заблокирован: Критическая веха не завершена.",
+    "Current summary must populate the PDF management conclusion"
+  );
+  assert(
+    reportDataWithCurrentAnalysis.analysisBlocks?.detailedAnalysis.dataCompleteness === "Данные заполнены.",
+    "Current data direction must populate the PDF analysis"
+  );
+  assert(
+    reportDataWithCurrentAnalysis.analysisBlocks?.detailedAnalysis.pcTimeliness === "ПК проводится своевременно.",
+    "Current PC direction must populate the PDF analysis"
+  );
+  assert(
+    reportDataWithCurrentAnalysis.analysisBlocks?.detailedAnalysis.lagOrAdvance === "Критическая веха просрочена.",
+    "Current milestones direction must populate the PDF analysis"
+  );
+  assert(
+    reportDataWithCurrentAnalysis.analysisBlocks?.detailedAnalysis.indicators === "Показатели ниже плана.",
+    "Current indicators direction must populate the PDF analysis"
+  );
+  console.log("✓ Current AI response schema populates the analytical PDF page.");
 
   // 3. показатели из других кварталов не попадают в отчет
   // 4. показатели из других лет не попадают в отчет
