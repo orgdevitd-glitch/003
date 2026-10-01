@@ -4,6 +4,23 @@ import { ProjectAnalysisResultSchema } from "../prompts/projectAnalysisSchema";
 import { cleanEnv, isValidAssistantId } from "./envHelper";
 import { ProjectAnalysisPayload } from "./projectAnalysisPayloadService";
 
+export interface OpenAIProjectData {
+  assessmentDate: string;
+  analysisPayload: ProjectAnalysisPayload;
+  assistantEvidenceBrief: string;
+}
+
+export function buildOpenAIProjectData(input: {
+  assessmentDate: string;
+  analysisPayload: ProjectAnalysisPayload;
+}): OpenAIProjectData {
+  return {
+    assessmentDate: input.assessmentDate,
+    analysisPayload: input.analysisPayload,
+    assistantEvidenceBrief: input.analysisPayload.assistantEvidenceBrief
+  };
+}
+
 export async function analyzeProjectWithOpenAI(input: {
   project: Project;
   assessmentDate: string;
@@ -36,12 +53,7 @@ export async function analyzeProjectWithOpenAI(input: {
 
   const openai = new OpenAI({ apiKey });
 
-  const projectData = {
-    assessmentDate: input.assessmentDate,
-    analysisPayload: input.analysisPayload,
-    assistantEvidenceBrief: input.analysisPayload.assistantEvidenceBrief,
-    legacyProject: input.project
-  };
+  const projectData = buildOpenAIProjectData(input);
 
   const thread = await openai.beta.threads.create();
 
