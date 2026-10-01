@@ -309,6 +309,10 @@ export function normalizeProjectRow(
         const fItems = splitListCell(fRaw, { preserveEmpty: true }).value || [];
 
         iItems.forEach((iName, iIdx) => {
+          const normalizedName = iName.trim();
+          if (!normalizedName) {
+            return;
+          }
           const plStr = plItems[iIdx] || "";
           const fStr = fItems[iIdx] || "";
 
@@ -345,7 +349,7 @@ export function normalizeProjectRow(
             id: `IND-${projectIdStr}-${yr}-${qtr}-${iIdx + 1}`,
             year: yr,
             quarter: qtr as "Q1" | "Q2" | "Q3" | "Q4",
-            name: iName,
+            name: normalizedName,
             plan: plVal,
             fact: fVal,
             periodStatus,
