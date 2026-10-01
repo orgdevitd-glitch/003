@@ -14,6 +14,7 @@ import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndica
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
 import { geoAccessMiddleware } from "./server/services/geoAccessService";
+import { parseBitrixImportRequest } from "./server/services/bitrixImportService";
 import { 
   getAdvancedAccessConfig, 
   verifyAdvancedAccessPassword,
@@ -295,11 +296,11 @@ async function startServer() {
       return res.status(403).json({ success: false, error: "Forbidden" });
     }
 
-    const { projects, syncId, mode } = req.body;
-
-    if (!Array.isArray(projects)) {
+    const importRequest = parseBitrixImportRequest(req.body);
+    if (!importRequest) {
       return res.status(400).json({ success: false, error: "projects must be an array" });
     }
+    const { projects, syncId, mode } = importRequest;
 
     try {
       const result = await storage.upsertProjects(projects, syncId || `sync-${Date.now()}`, mode || "full");
