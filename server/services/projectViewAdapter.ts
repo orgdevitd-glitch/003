@@ -14,6 +14,8 @@ export function toLegacyProjectView(normalized: NormalizedProject): Project {
     mappedStatus = "active";
   } else if (stage === "Завершен") {
     mappedStatus = "completed";
+  } else if (stage === "Остановлен") {
+    mappedStatus = "cancelled";
   } else if (stage === "На паузе") {
     mappedStatus = "waiting";
   } else if (stage === "Планируется") {

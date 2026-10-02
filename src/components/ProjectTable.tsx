@@ -2085,7 +2085,7 @@ export const ProjectTable: React.FC<ProjectTableProps> = ({
 
                   <div>
                     <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest font-mono">Дата завершения / срок</p>
-                    <p className={`font-bold mt-0.5 ${p.deadlineAt && (new Date() > (parseDateSafe(p.deadlineAt) || new Date('2099-01-01'))) && p.status !== 'completed' ? 'text-red-500' : 'text-gray-900'}`}>
+                    <p className={`font-bold mt-0.5 ${isProjectDeadlineOverdue(p, assessmentDate) ? 'text-red-500' : 'text-gray-900'}`}>
                       {formatDateValue(p.deadlineAt || p.endDate)}
                     </p>
                   </div>

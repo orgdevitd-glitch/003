@@ -6,6 +6,7 @@ import { Project } from "../../src/types";
 import { calculateUnifiedProjectRisk } from "../../src/utils/projectRegistryStatus";
 import { toLegacyProjectView } from "./projectViewAdapter";
 import { calculateProjectDataCompleteness } from "../../src/utils/projectCompleteness";
+import { isTerminalProjectStage, normalizeProjectStage } from "../../src/utils/projectStageStyles";
 import type { DataIssue } from "./dataValidation";
 
 export type IndicatorEvaluation = {
@@ -124,6 +125,8 @@ export function evaluateProject(
 
   const mainReasons: string[] = [];
   const explanations: string[] = [];
+  const normalizedStage = normalizeProjectStage(project.baseInfo.stage);
+  const isStopped = normalizedStage === "Остановлен";
 
   // ==========================================
   // 1. DATA QUALITY & COMPLETENESS
@@ -223,7 +226,7 @@ export function evaluateProject(
       }
     }
 
-    if (overdueCount > 0) {
+    if (overdueCount > 0 && !isStopped) {
       mainReasons.push(`Просрочено вех (${overdueCount})`);
       explanations.push(`Найдены просроченные вехи в прошлых периодах: ${overdueCount} шт.`);
     }
@@ -293,6 +296,11 @@ export function evaluateProject(
     const totalWeightSumOfModel = modelResult.weightStatus === "error_over_100" 
       ? null 
       : modelResult.milestones.reduce((acc, m) => acc + m.effectiveWeightPercent, 0);
+
+    if (isStopped) {
+      mStatus = "not_applicable";
+      overdueCount = 0;
+    }
 
     milestonesEval = {
       status: mStatus,
@@ -595,16 +603,16 @@ export function evaluateProject(
   const projectStartStr = project.baseInfo.startDate;
   const projectStart = projectStartStr ? new Date(projectStartStr) : null;
 
-  const isCompleted = project.baseInfo.stage === "Завершен";
+  const isTerminal = isTerminalProjectStage(normalizedStage);
 
-  if (isCompleted) {
+  if (isTerminal) {
     monitoringEval = {
       status: "not_applicable",
       lastMonitoringDate: mon.lastMonitoringDate,
       nextMonitoringDate: null,
       overdueDays: null
     };
-    explanations.push("Мониторинг завершен, так как проект закрыт.");
+    explanations.push("Мониторинг не применяется, так как проект завершен или остановлен.");
   } else if (projectStart && assessmentDate.getTime() < projectStart.getTime()) {
     monitoringEval = {
       status: "not_applicable",

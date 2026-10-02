@@ -1,6 +1,7 @@
 import { Project } from '../types';
 import { parseDateSafe } from './dateUtils';
 import { parseRussianDate } from './projectCalculations';
+import { isTerminalProjectStage } from './projectStageStyles';
 
 /**
  * Checks if a project's deadline is overdue relative to the assessment date.
@@ -8,11 +9,11 @@ import { parseRussianDate } from './projectCalculations';
  * Rules:
  * 1. Effective deadline is project.deadlineAt || project.endDate.
  * 2. If both are empty or invalid, it is not overdue.
- * 3. If effectiveDeadline < assessmentDate, then it's overdue (provided the project status is not 'completed').
+ * 3. If effectiveDeadline < assessmentDate, then it's overdue (provided the project is not completed/stopped).
  * 4. All checks should be calculated relative to assessmentDate (no new Date() usage).
  */
 export function isProjectDeadlineOverdue(project: Project, assessmentDate?: string): boolean {
-  if (project.status === 'completed') {
+  if (isTerminalProjectStage(project.stage, project.status)) {
     return false;
   }
 
