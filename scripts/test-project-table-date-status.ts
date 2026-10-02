@@ -113,4 +113,19 @@ runTest("Scenario 6: Verify system date is not used", () => {
   assert(result2 === false, "Should return false if assessmentDate is invalid");
 });
 
+runTest("Scenario 7: stopped stage is not highlighted as overdue", () => {
+  const project: Project = {
+    projectId: "7",
+    projectName: "Stopped project",
+    stage: "Остановлен",
+    status: "active",
+    tasks: [],
+    milestones: [],
+    indicators: [],
+    deadlineAt: "2026-06-10"
+  };
+  const result = isProjectDeadlineOverdue(project, "2026-10-02");
+  assert(result === false, "Stopped projects should never be highlighted as overdue");
+});
+
 console.log("[PROJECT_TABLE_DATE_TEST] All Project Table Date Status tests completed successfully!");

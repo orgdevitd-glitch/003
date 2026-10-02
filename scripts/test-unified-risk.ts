@@ -332,4 +332,39 @@ runTest("9. Synthetic test for calculated weights with unweighted/zero-weighted 
   assert(registryRiskResult.details.totalOverdueMilestones > 0, "Registry high risk driven by incomplete completed-period milestone");
 });
 
+runTest("10. Stopped stage is terminal even when legacy status remains active", () => {
+  const project: Project = {
+    projectId: "p-stopped",
+    projectName: "Stopped Project",
+    stage: "Остановлен",
+    status: "active",
+    startDate: "2026-01-01",
+    deadlineAt: "2026-03-31",
+    endDate: "2026-03-31",
+    monitoringStart: "2026-01-01",
+    lastPcDate: "2026-01-01",
+    monitoringFrequencyWeeks: 1,
+    _dataYear: 2026,
+    _rawByYear: {
+      "2026": {
+        milestones: {
+          q1names: "Cancelled milestone",
+          q1progress: "0%",
+          q1weights: "100%"
+        },
+        indicators: {}
+      }
+    },
+    tasks: [],
+    milestones: [],
+    indicators: []
+  };
+
+  const result = calculateUnifiedProjectRisk(project, null, "2026-10-02");
+  assert(result.riskLevel === "Низкий", `Stopped project must not retain active delivery risk, got ${result.riskLevel}`);
+  assert(result.details.totalOverdueMilestones === 0, "Stopped project must not have overdue milestones");
+  assert(result.details.isDeadlineOverdue === false, "Stopped project deadline must not be overdue");
+  assert(!result.reasons.some(reason => reason.includes("вех") || reason.includes("дата завершения")), "Stopped project must not report active milestone or deadline reasons");
+});
+
 console.log("[UNIFIED_RISK_TEST] ALL PARAMS AND REGRESSION TESTS COMPLETED SUCCESSFULLY!\n");

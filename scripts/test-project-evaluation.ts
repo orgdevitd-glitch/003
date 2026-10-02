@@ -642,6 +642,40 @@ runTest("Scenario H: error_over_100 critical error status", () => {
   assert(res.explanations.some(e => e.includes("превышает 100%")), "explanations should contain explanation about over 100%");
 });
 
+runTest("Stopped projects do not accrue active monitoring or milestone overdue status", () => {
+  const proj = createMockProject({
+    baseInfo: { stage: "Остановлен" },
+    milestones: [
+      {
+        id: "STOPPED-M1",
+        year: 2026,
+        quarter: "Q1",
+        name: "Cancelled milestone",
+        progressPercent: 0,
+        weightPercent: 100,
+        periodStatus: "past",
+        isApplicableQuarter: true,
+        sourceColumns: { name: "", progress: "", weight: "" }
+      }
+    ],
+    monitoring: {
+      startDate: "2026-01-01",
+      regularityWeeks: 1,
+      lastMonitoringDate: "2026-01-01",
+      nextMonitoringDate: "2026-01-08",
+      isMonitoringOverdue: true
+    }
+  });
+
+  const res = evaluateProject(proj, { assessmentDate: new Date("2026-10-02") });
+  assert(res.monitoring.status === "not_applicable", "Stopped project monitoring must be not applicable");
+  assert(res.monitoring.overdueDays === null, "Stopped project must not accrue monitoring overdue days");
+  assert(res.milestones.status === "not_applicable", "Stopped project milestones must not be marked as active lag");
+  assert(res.milestones.overdueMilestonesCount === 0, "Stopped project must not have overdue milestones");
+  assert(!res.projectHealth.mainReasons.some(reason => reason.includes("Просрочка ПК")), "Stopped project health must not include PC overdue reasons");
+  assert(!res.projectHealth.mainReasons.some(reason => reason.includes("Просрочено вех")), "Stopped project health must not include milestone overdue reasons");
+});
+
 console.log("\n-----------------------------------------------------------");
 console.log("All project assessment evaluation test scenarios completed successfully!");
 console.log("-----------------------------------------------------------\n");

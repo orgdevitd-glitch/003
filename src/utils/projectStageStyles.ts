@@ -138,6 +138,19 @@ export function normalizeProjectStage(value: string | null | undefined, _status?
   return UNSPECIFIED_PROJECT_STAGE;
 }
 
+export function isTerminalProjectStage(
+  stage: string | null | undefined,
+  status?: string | null | undefined
+): boolean {
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+  if (normalizedStatus === "completed" || normalizedStatus === "cancelled" || normalizedStatus === "canceled") {
+    return true;
+  }
+
+  const normalizedStage = normalizeProjectStage(stage);
+  return normalizedStage === "Завершен" || normalizedStage === "Остановлен";
+}
+
 /**
  * Returns Tailwind css definitions for project stage badges.
  */

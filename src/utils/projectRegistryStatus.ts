@@ -21,7 +21,7 @@ import {
   isPeriodIncludedForMode
 } from './periodApplicability';
 import { getYearsForProject } from './overviewYearFiltering';
-import { normalizeProjectStage } from './projectStageStyles';
+import { isTerminalProjectStage, normalizeProjectStage } from './projectStageStyles';
 
 export { getQuarterPeriodStatus, resolveProjectSelectedYear } from './periodApplicability';
 export type { QuarterPeriodStatus, PeriodInclusionMode } from './periodApplicability';
@@ -458,7 +458,7 @@ export function calculateUnifiedProjectRisk(
 
   const startDateObj = project.startDate ? parseDateSafe(project.startDate) : null;
   const endDateObj = (project.deadlineAt || project.endDate) ? parseDateSafe(project.deadlineAt || project.endDate) : null;
-  const isCompleted = project.status === 'completed' || project.status === 'cancelled' || project.stage === 'Завершен' || project.stage === 'completed';
+  const isTerminal = isTerminalProjectStage(project.stage, project.status);
 
   let milestoneActualProgressForRisk: number | null = null;
   let totalOverdueMilestones = 0;
@@ -468,7 +468,7 @@ export function calculateUnifiedProjectRisk(
   const isEndDateValid = endDateObj !== null && !isNaN(endDateObj.getTime());
   const hasValidDates = isStartDateValid && isEndDateValid;
 
-  if (isCompleted) {
+  if (isTerminal) {
     milestoneActualProgressForRisk = null;
     totalOverdueMilestones = 0;
     milestonesRisk = 'Низкий';
@@ -681,7 +681,7 @@ export function calculateUnifiedProjectRisk(
   let isDeadlineOverdue = false;
   const deadlineStr = project.deadlineAt || project.endDate;
   const deadlineDate = deadlineStr ? parseDateSafe(deadlineStr) : null;
-  if (deadlineDate && (project.status !== 'completed' && project.status !== 'cancelled' && project.stage !== 'Завершен' && project.stage !== 'completed')) {
+  if (deadlineDate && !isTerminal) {
     const deadlineMidnight = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate()).getTime();
     const assessMidnight = new Date(assessDate.getFullYear(), assessDate.getMonth(), assessDate.getDate()).getTime();
     if (deadlineMidnight < assessMidnight) {

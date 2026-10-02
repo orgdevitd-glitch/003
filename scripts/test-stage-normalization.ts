@@ -1,4 +1,4 @@
-import { normalizeProjectStage, getStageLabel, getStageColor, STAGE_COLOR_MAP, UNSPECIFIED_PROJECT_STAGE } from "../src/utils/projectStageStyles";
+import { normalizeProjectStage, getStageLabel, getStageColor, isTerminalProjectStage, STAGE_COLOR_MAP, UNSPECIFIED_PROJECT_STAGE } from "../src/utils/projectStageStyles";
 
 function runTest(name: string, fn: () => void) {
   console.log(`[STAGE_TEST] Running: ${name}...`);
@@ -63,6 +63,13 @@ runTest("getStageColor returns #C00000 for Остановлен and works with S
   assert(getStageColor("остановлен") === "#C00000", "Normalized stopped projects must map to color #C00000");
   assert(STAGE_COLOR_MAP["Остановлен"] === "#C00000", "STAGE_COLOR_MAP['Остановлен'] must be #C00000");
   assert(STAGE_COLOR_MAP["На паузе"] === "#9ca3af", "STAGE_COLOR_MAP['На паузе'] must be #9ca3af");
+});
+
+runTest("stopped and cancelled projects are terminal", () => {
+  assert(isTerminalProjectStage("Остановлен", "active"), "Stopped stage must be terminal even with stale active status");
+  assert(isTerminalProjectStage("cancelled", "active"), "Cancelled stage alias must be terminal");
+  assert(isTerminalProjectStage("В работе", "cancelled"), "Cancelled legacy status must remain terminal");
+  assert(!isTerminalProjectStage("На паузе", "waiting"), "Paused projects must not be terminal");
 });
 
 console.log("All stage normalization tests passed successfully!");

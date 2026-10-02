@@ -382,6 +382,12 @@ runTest("Scenario 10: Legacy View Adapter mapping accuracy", () => {
   assert(legacy.indicators[0].name === "Показатель Раз", "Adapter indicator name mismatch");
   assert(legacy.indicators[0].planValue === 200, "Adapter indicator plan mismatch");
   assert(legacy.indicators[0].factValue === 180, "Adapter indicator fact mismatch");
+
+  const stoppedLegacy = toLegacyProjectView({
+    ...mockNormalized,
+    baseInfo: { ...mockNormalized.baseInfo, stage: "Остановлен" }
+  });
+  assert(stoppedLegacy.status === "cancelled", "Adapter must map 'Остановлен' to terminal cancelled status");
 });
 
 // 8. Regression test: department mapping from "Департамент"
