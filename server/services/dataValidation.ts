@@ -823,6 +823,20 @@ export function validateProjectRow(
 
       if (isApplicable) {
         if (hasIndicatorsFilled) {
+          indicatorsParsed.value.forEach((indicatorName, indicatorIndex) => {
+            if (!indicatorName.trim()) {
+              issues.push({
+                severity: "error",
+                rowIndex,
+                projectId: displayProjectId,
+                projectName: projectNameStr,
+                field: companions.indicatorsCol || `Показатели проекта ${year} ${quarter}`,
+                code: "INDICATOR_NAME_EMPTY",
+                message: `Название показателя №${indicatorIndex + 1} не заполнено в ${qKey}`
+              });
+            }
+          });
+
           // 1) Must have plan values
           if (!hasPlanFilled) {
             issues.push({

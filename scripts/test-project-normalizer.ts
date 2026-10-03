@@ -119,6 +119,34 @@ runTest("Scenario 3: Project with indicators only, no milestones", () => {
   assert(res.indicators[0].fact === 95, "Indicator 1 fact match");
 });
 
+runTest("Blank indicator slots do not become calculated KPIs", () => {
+  const mockRow = {
+    "ID": "blank-kpi",
+    "Название": "Проект с пустым слотом показателя",
+    "Дата начала": "01.01.2026",
+    "Дата завершения": "31.12.2026",
+    "Стадия": "В работе",
+    "Показатели проекта 2026 Q1": "Revenue;;Quality",
+    "План Показатели проекта 2026 Q1": "100;100;100",
+    "Факт Показатели проекта 2026 Q1": "100;0;100"
+  };
+
+  const context: NormalizationContext = {
+    assessmentDate: new Date("2026-06-01"),
+    detectedYears: [2026],
+    columnAnalysis: analyzeSheetColumns(Object.keys(mockRow))
+  };
+
+  const res = normalizeProjectRow(mockRow, 4, context);
+
+  assert(res.indicators.length === 2, "Blank indicator names must be skipped");
+  assert(res.indicators[0].name === "Revenue", "The first indicator must keep its aligned values");
+  assert(res.indicators[0].fact === 100, "The first indicator fact must remain aligned");
+  assert(res.indicators[1].name === "Quality", "The indicator after the blank slot must be preserved");
+  assert(res.indicators[1].plan === 100, "The indicator after the blank slot must keep its plan");
+  assert(res.indicators[1].fact === 100, "The indicator after the blank slot must keep its fact");
+});
+
 // 4. Проект с вехами, но без показателей
 runTest("Scenario 4: Project with milestones, no indicators", () => {
   const mockRow = {

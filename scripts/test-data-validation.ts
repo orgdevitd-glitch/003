@@ -324,5 +324,38 @@ runTest("Empty Facts Permitted in Future Quarters", () => {
   assert(!hasAnyErrors, "Valid future indicator sequence with zero errors");
 });
 
+runTest("Blank indicator name slots are rejected", () => {
+  const headers = [
+    "ID", "Название", "Цели проекта", "Образы результатов", "Дата начала", "Дата завершения",
+    "Стадия", "Вид", "Приоритет",
+    "Показатели проекта 2026 Q1", "План Показатели проекта 2026 Q1", "Факт Показатели проекта 2026 Q1"
+  ];
+  const row: Record<string, string> = {
+    "ID": "blank-kpi",
+    "Название": "Проект с пустым слотом показателя",
+    "Цели проекта": "Корректная оценка",
+    "Образы результатов": "Отчет",
+    "Дата начала": "01.01.2026",
+    "Дата завершения": "31.12.2026",
+    "Стадия": "В работе",
+    "Вид": "Проект",
+    "Приоритет": "1",
+    "Показатели проекта 2026 Q1": "Revenue;;Quality",
+    "План Показатели проекта 2026 Q1": "100;100;100",
+    "Факт Показатели проекта 2026 Q1": "100;0;100"
+  };
+
+  const report = validateProjectRows(
+    [row],
+    headers,
+    { assessmentDate: new Date("2026-06-15"), detectedYears: [2026] }
+  );
+
+  assert(
+    report.issues.some(issue => issue.code === "INDICATOR_NAME_EMPTY"),
+    "Aligned blank KPI slots must be reported as import errors"
+  );
+});
+
 console.log("All validation tests successfully executed!");
 process.exit(0);
