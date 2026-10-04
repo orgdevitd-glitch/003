@@ -1,4 +1,9 @@
-import { analyzeSheetColumns, BASE_COLUMNS } from "../server/services/dataContract";
+import Papa from "papaparse";
+import {
+  analyzeSheetColumns,
+  assertNoDuplicateContractHeaders,
+  BASE_COLUMNS
+} from "../server/services/dataContract";
 import { 
   splitListCell, 
   parseDateCell, 
@@ -65,6 +70,29 @@ runTest("Missing Base Column Test", () => {
   const res = analyzeSheetColumns(incompleteHeaders);
   assert(res.structureStatus === "error" || res.structureStatus === "warning", "Status should not be ok");
   assert(res.missingBaseColumns.includes("Цели проекта"), "Should identify missing base columns");
+});
+
+runTest("Duplicate Contract Header Test", () => {
+  const parsed = Papa.parse(
+    "ID,Название,Вехи 2026 Q1,Вехи 2026 Q1\n1,Проект,Первая,Вторая",
+    { header: true }
+  );
+
+  let errorMessage = "";
+  try {
+    assertNoDuplicateContractHeaders(parsed.meta.renamedHeaders);
+  } catch (error: any) {
+    errorMessage = error.message;
+  }
+
+  assert(
+    errorMessage.includes("Вехи 2026 Q1"),
+    "Duplicate quarterly columns must abort import before values are truncated"
+  );
+
+  assertNoDuplicateContractHeaders({
+    "Служебная колонка_1": "Служебная колонка"
+  });
 });
 
 // 2. Parser Unit Tests

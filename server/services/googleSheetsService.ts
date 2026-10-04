@@ -8,7 +8,7 @@ import { getGoogleSheetsConfig } from "./envHelper";
 import { validateProjectRows, ImportValidationReport } from "./dataValidation";
 import { normalizeProjectRows, NormalizedProject } from "./projectNormalizer";
 import { toLegacyProjectView } from "./projectViewAdapter";
-import { analyzeSheetColumns, normalizeHeaderName, normalizeRowKeys } from "./dataContract";
+import { analyzeSheetColumns, assertNoDuplicateContractHeaders, normalizeHeaderName, normalizeRowKeys } from "./dataContract";
 import { evaluateProjects, calculatePortfolioEvaluation, ProjectEvaluation, PortfolioEvaluation } from "./projectEvaluationService";
 import { getIndicatorDictionary, IndicatorDictionaryItem } from "./indicatorDictionary";
 
@@ -203,6 +203,8 @@ export async function fetchProjectsFromSheet(assessmentDate: Date = new Date()):
     header: true,
     skipEmptyLines: true,
   });
+
+  assertNoDuplicateContractHeaders(results.meta.renamedHeaders);
 
   const rawHeaders = results.meta.fields || [];
   const parsedHeaders = rawHeaders.map((h, idx) => normalizeHeaderName(h, idx));
