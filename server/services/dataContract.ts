@@ -60,6 +60,28 @@ export const QUARTER_PATTERNS = {
   factCol: /^\s*Факт Показатели проекта\s+(\d{4})\s+(Q[1-4])\s*$/i,
 };
 
+export function assertNoDuplicateContractHeaders(
+  renamedHeaders?: Record<string, string> | null
+): void {
+  if (!renamedHeaders) return;
+
+  const duplicateContractHeaders = Array.from(new Set(
+    Object.values(renamedHeaders)
+      .map((header) => normalizeHeaderName(header))
+      .filter((header) =>
+        BASE_COLUMNS.includes(header) ||
+        Object.values(QUARTER_PATTERNS).some((pattern) => pattern.test(header))
+      )
+  ));
+
+  if (duplicateContractHeaders.length > 0) {
+    throw new Error(
+      `Google Sheets contains duplicate project columns: ${duplicateContractHeaders.join(", ")}. ` +
+      "Rename or merge the duplicate columns before synchronizing."
+    );
+  }
+}
+
 export function normalizeHeaderName(header: string, index?: number): string {
   if (header === undefined || header === null) {
     if (index === 0) return "ID";
