@@ -681,12 +681,16 @@ export function buildProjectAnalysisPayload(params: {
     explanation: string | null;
   }) => {
     const normName = normalizeName(item.name);
-    const normPeriod = normalizePeriod(item.period);
-    const key = `${normName}||${normPeriod}`;
+    const parsedPeriod = parsePeriodYearQuarter(item.period);
+    const normalizedQuarter = normalizePeriod(item.period);
+    const normalizedPeriod = parsedPeriod.year && parsedPeriod.quarter
+      ? `${parsedPeriod.quarter} ${parsedPeriod.year}`
+      : normalizedQuarter;
+    const key = `${normName}||${normalizedPeriod}`;
 
     if (!indicatorsMap.has(key)) {
       indicatorsMap.set(key, {
-        period: normPeriod,
+        period: normalizedPeriod,
         name: item.name.trim(),
         plan: item.plan,
         fact: item.fact,

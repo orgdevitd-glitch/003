@@ -1715,6 +1715,51 @@ function runTests() {
   // Restore dictionary
   setIndicatorDictionary(originalDict);
 
+  // Multi-year recurring KPIs must remain distinct in the AI payload.
+  const recurringKpiProject: Project = {
+    projectId: "P-MULTI-KPI",
+    projectName: "Multi-year recurring KPI",
+    status: "active",
+    stage: "В работе",
+    startDate: "2025-01-01",
+    endDate: "2026-12-31",
+    tasks: [],
+    milestones: [],
+    indicators: [
+      {
+        indicatorId: "KPI-2025-Q1",
+        name: "Recurring KPI",
+        period: "Q1 2025",
+        planValue: 100,
+        factValue: 10
+      },
+      {
+        indicatorId: "KPI-2026-Q1",
+        name: "Recurring KPI",
+        period: "Q1 2026",
+        planValue: 100,
+        factValue: 100
+      }
+    ]
+  };
+
+  const recurringKpiPayload = buildProjectAnalysisPayload({
+    project: recurringKpiProject,
+    assessmentDate: "2026-03-31",
+    assessmentDateMode: "custom"
+  });
+  const recurringIndicators = recurringKpiPayload.indicatorsSnapshot.indicators;
+  assert(recurringIndicators.length === 2, `Expected both yearly KPI observations in AI payload, got ${recurringIndicators.length}`);
+  assert(
+    recurringIndicators.some(ind => ind.period === "Q1 2025" && ind.fact === 10),
+    "Expected the 2025 KPI observation to retain its year and value"
+  );
+  assert(
+    recurringIndicators.some(ind => ind.period === "Q1 2026" && ind.fact === 100),
+    "Expected the 2026 KPI observation to retain its year and value"
+  );
+  console.log("✓ Multi-year recurring KPIs remain distinct in AI analysis payload");
+
   console.log("\n[TEST] All mathematical calculations and data integrations tested successfully!");
 }
 
