@@ -3,6 +3,7 @@ import {
   splitListCell, 
   parseDateCell, 
   parseIntegerCell, 
+  parseProjectIdCell,
   parsePercentCell, 
   parseUrlCell 
 } from "../server/services/dataParsing";
@@ -12,6 +13,7 @@ import {
   getQuarterPeriod,
   getApplicableQuarters
 } from "../server/services/dataValidation";
+import { assertValidProjectIdentities } from "../server/services/googleSheetsService";
 
 function runTest(name: string, fn: () => void) {
   console.log(`[TEST] Running: ${name}...`);
@@ -101,6 +103,30 @@ runTest("Percent Parser parsePercentCell", () => {
 
   const r3 = parsePercentCell("80");
   assert(r3.value === 80, "Raw integer should be kept as percent");
+});
+
+runTest("Project IDs reject fractional and malformed values", () => {
+  assert(parseProjectIdCell("10.6").status === "error", "Fractional IDs must be rejected");
+  assert(parseProjectIdCell("11abc").status === "error", "IDs with trailing characters must be rejected");
+  assert(parseProjectIdCell("11").value === 11, "Valid integer IDs must remain accepted");
+
+  const report = validateProjectRows(
+    [{ "ID": "10.6", "Название": "Ошибочный ID" }],
+    ["ID", "Название"],
+    { assessmentDate: new Date("2026-06-04"), detectedYears: [2026] }
+  );
+  assert(
+    report.issues.some(issue => issue.code === "ID_INVALID_FORMAT"),
+    "Fractional IDs must produce an ID_INVALID_FORMAT validation error"
+  );
+
+  let syncRejected = false;
+  try {
+    assertValidProjectIdentities(report);
+  } catch {
+    syncRejected = true;
+  }
+  assert(syncRejected, "An authoritative sync with invalid identity must be rejected");
 });
 
 // 3. Quarter Status Evaluation relative to Assessment Dates

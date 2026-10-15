@@ -642,6 +642,37 @@ runTest("Scenario H: error_over_100 critical error status", () => {
   assert(res.explanations.some(e => e.includes("превышает 100%")), "explanations should contain explanation about over 100%");
 });
 
+runTest("Batch evaluation preserves import validation issues", () => {
+  const project = createMockProject();
+  const importIssue = {
+    severity: "error" as const,
+    rowIndex: 2,
+    projectId: project.projectId,
+    projectName: project.baseInfo.title,
+    field: "Дата начала",
+    code: "START_DATE_INVALID",
+    message: "Некорректная дата начала"
+  };
+  const context = {
+    assessmentDate: new Date("2026-06-01"),
+    importIssuesByProjectId: {
+      [project.projectId]: [importIssue]
+    }
+  };
+
+  const direct = evaluateProject(project, context);
+  const batch = evaluateProjects([project], context)[0];
+
+  assert(
+    batch.dataQuality.errorsCount === direct.dataQuality.errorsCount,
+    "Batch evaluation must forward import errors to evaluateProject"
+  );
+  assert(
+    batch.dataQuality.issuesCount === direct.dataQuality.issuesCount,
+    "Batch evaluation must preserve the complete import issue count"
+  );
+});
+
 console.log("\n-----------------------------------------------------------");
 console.log("All project assessment evaluation test scenarios completed successfully!");
 console.log("-----------------------------------------------------------\n");

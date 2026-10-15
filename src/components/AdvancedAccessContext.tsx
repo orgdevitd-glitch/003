@@ -8,6 +8,15 @@ export interface AdvancedAccessConfig {
   protectedActions: string[];
 }
 
+export function canBypassAdvancedAccess(
+  config: AdvancedAccessConfig | null,
+  actionId: string
+): boolean {
+  return config !== null && (
+    !config.enabled || !config.protectedActions.includes(actionId)
+  );
+}
+
 interface AdvancedAccessContextType {
   config: AdvancedAccessConfig | null;
   requireAdvancedAccess: (actionId: string, callback: () => void) => void;
@@ -35,20 +44,23 @@ export const AdvancedAccessProvider: React.FC<{ children: React.ReactNode }> = (
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
 
+  const loadConfig = async (): Promise<AdvancedAccessConfig | null> => {
+    try {
+      const res = await fetch("/api/advanced-access/config");
+      const data = await res.json();
+      if (res.ok && data.success && data.config) {
+        setConfig(data.config);
+        return data.config;
+      }
+    } catch (err) {
+      console.error("Failed to load advanced access config:", err);
+    }
+    return null;
+  };
+
   // Load config on mount
   useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        const res = await fetch("/api/advanced-access/config");
-        const data = await res.json();
-        if (data.success && data.config) {
-          setConfig(data.config);
-        }
-      } catch (err) {
-        console.error("Failed to load advanced access config:", err);
-      }
-    };
-    fetchConfig();
+    void loadConfig();
   }, []);
 
   // Fetch server status on config load
@@ -70,13 +82,25 @@ export const AdvancedAccessProvider: React.FC<{ children: React.ReactNode }> = (
   }, [config]);
 
   const isVerified = (): boolean => {
-    if (!config || !config.enabled) return true;
+    if (!config) return false;
+    if (!config.enabled) return true;
     return isServerActive;
   };
 
   const requireAdvancedAccess = async (actId: string, callback: () => void) => {
-    // If config hasn't loaded yet or is disabled, or action isn't protected, bypass
-    if (!config || !config.enabled || !config.protectedActions.includes(actId)) {
+    // Resolve unknown configuration before deciding whether an action is protected.
+    // A failed config request must never grant access to client-only exports.
+    const effectiveConfig = config || await loadConfig();
+    if (!effectiveConfig) {
+      setActionId(actId);
+      setPendingCallback(() => callback);
+      setPassword("");
+      setError("Не удалось проверить настройки доступа. Повторите попытку позже.");
+      setModalOpen(true);
+      return;
+    }
+
+    if (canBypassAdvancedAccess(effectiveConfig, actId)) {
       callback();
       return;
     }

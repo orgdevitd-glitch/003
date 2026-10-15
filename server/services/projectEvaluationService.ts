@@ -760,10 +760,11 @@ export function evaluateProjects(
 ): ProjectEvaluation[] {
   const assessmentDate = context.assessmentDate || new Date();
   
-  const validContext = {
+  const validContext: EvaluationContext = {
     assessmentDate,
     methodologyConfig: context.methodologyConfig || DEFAULT_METHODOLOGY_CONFIG,
-    indicatorDictionary: context.indicatorDictionary || DEFAULT_INDICATOR_DICTIONARY
+    indicatorDictionary: context.indicatorDictionary || DEFAULT_INDICATOR_DICTIONARY,
+    importIssuesByProjectId: context.importIssuesByProjectId
   };
 
   return projects.map(p => evaluateProject(p, validContext));

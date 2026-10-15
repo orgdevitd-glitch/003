@@ -12,6 +12,7 @@ import {
   splitListCell, 
   parseDateCell, 
   parseIntegerCell, 
+  parseProjectIdCell,
   parseNumberCell, 
   parsePercentCell, 
   parseUrlCell,
@@ -172,7 +173,7 @@ export function validateProjectRow(
       message: "ID проекта отсутствует"
     });
   } else {
-    const idResult = parseIntegerCell(projectIdStr);
+    const idResult = parseProjectIdCell(projectIdStr);
     if (idResult.status === "error" || idResult.value === null) {
       issues.push({
         severity: "error",

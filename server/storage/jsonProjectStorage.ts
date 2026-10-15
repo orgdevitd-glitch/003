@@ -73,7 +73,12 @@ export class JsonProjectStorage implements ProjectStorage {
     return projects.find(p => p.projectId === projectId) || null;
   }
 
-  async upsertProjects(projects: Project[], syncId: string, mode: string): Promise<ImportResult> {
+  async upsertProjects(
+    projects: Project[],
+    syncId: string,
+    mode: string,
+    source: "sheets" | "bitrix24"
+  ): Promise<ImportResult> {
     const existingProjects: Project[] = await this.getAllProjects();
     const existingProjectsMap = new Map<string, Project>();
     for (const p of existingProjects) {
@@ -102,7 +107,7 @@ export class JsonProjectStorage implements ProjectStorage {
     const now = new Date().toISOString();
     let updatedProjects: Project[] = [];
 
-    const targetSource: "sheets" | "bitrix24" = syncId.startsWith("sheets-sync") ? "sheets" : "bitrix24";
+    const targetSource = source;
 
     if (mode === "full") {
       // Find deleted projects (existed in store with the same source, but not present in incoming list)
@@ -183,7 +188,7 @@ export class JsonProjectStorage implements ProjectStorage {
 
     const log: SyncLog = {
       syncId,
-      source: syncId.startsWith("sheets-sync") ? "sheets" : "bitrix24",
+      source: targetSource,
       mode: mode as any,
       receivedAt: new Date().toISOString(),
       receivedProjects: projects.length,

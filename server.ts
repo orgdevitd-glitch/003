@@ -14,6 +14,7 @@ import { loadIndicatorDictionary, getIndicatorDictionaryStatus, getUnknownIndica
 import { getIndicatorDictionary } from "./server/services/indicatorDictionary";
 import { evaluateProject } from "./server/services/projectEvaluationService";
 import { geoAccessMiddleware } from "./server/services/geoAccessService";
+import { isApiPath, isPublicApiPath } from "./server/services/apiAccessPolicy";
 import { 
   getAdvancedAccessConfig, 
   verifyAdvancedAccessPassword,
@@ -118,24 +119,11 @@ async function startServer() {
 
   // Protection middleware for API endpoints
   app.use((req, res, next) => {
-    const isPublicRoute =
-      req.path === "/api/auth/login" ||
-      req.path === "/api/auth/check" ||
-      req.path === "/api/auth/logout" ||
-      req.path === "/api/health" ||
-      req.path === "/api/bitrix/health" ||
-      req.path === "/api/bitrix/projects/import" ||
-      req.path === "/api/indicator-dictionary/status" ||
-      req.path === "/api/advanced-access/config" ||
-      req.path === "/api/advanced-access/verify" ||
-      req.path === "/api/advanced-access/status" ||
-      req.path === "/api/advanced-access/revoke";
-
-    if (isPublicRoute) {
+    if (isPublicApiPath(req.path)) {
       return next();
     }
 
-    if (req.path.startsWith("/api")) {
+    if (isApiPath(req.path)) {
       const token = getSessionFromCookie(req);
       if (isSessionValid(token)) {
         return next();
@@ -302,7 +290,12 @@ async function startServer() {
     }
 
     try {
-      const result = await storage.upsertProjects(projects, syncId || `sync-${Date.now()}`, mode || "full");
+      const result = await storage.upsertProjects(
+        projects,
+        syncId || `sync-${Date.now()}`,
+        mode || "full",
+        "bitrix24"
+      );
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
@@ -409,7 +402,12 @@ async function startServer() {
 
       if (fetchSuccess) {
         // 2. Sync to local storage to preserve lastAnalysis and other metadata
-        syncResult = await storage.upsertProjects(sheetsProjects, `sheets-sync-${Date.now()}`, "full");
+        syncResult = await storage.upsertProjects(
+          sheetsProjects,
+          `sheets-sync-${Date.now()}`,
+          "full",
+          "sheets"
+        );
       }
 
       // 3. Return everything from local storage

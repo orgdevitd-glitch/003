@@ -217,6 +217,53 @@ export function parseIntegerCell(value: any): ParseResult<number> {
 }
 
 /**
+ * Parses a project identity without rounding or accepting trailing characters.
+ */
+export function parseProjectIdCell(value: any): ParseResult<number> {
+  const rawStr = String(value === undefined || value === null ? "" : value).trim();
+
+  if (!rawStr) {
+    return {
+      value: null,
+      rawValue: rawStr,
+      status: "success",
+      errors: [],
+      warnings: []
+    };
+  }
+
+  const normalized = rawStr.replace(",", ".");
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(normalized)) {
+    return {
+      value: null,
+      rawValue: rawStr,
+      status: "error",
+      errors: [`ID проекта должен быть целым числом без посторонних символов: "${rawStr}"`],
+      warnings: []
+    };
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed)) {
+    return {
+      value: null,
+      rawValue: rawStr,
+      status: "error",
+      errors: [`ID проекта должен быть безопасным целым числом: "${rawStr}"`],
+      warnings: []
+    };
+  }
+
+  return {
+    value: parsed,
+    rawValue: rawStr,
+    status: "success",
+    errors: [],
+    warnings: []
+  };
+}
+
+/**
  * Parses number values (decimals supported)
  */
 export function parseNumberCell(value: any): ParseResult<number> {

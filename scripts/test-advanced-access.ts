@@ -6,6 +6,7 @@ import {
   createAdvancedAccessSession,
   revokeAdvancedAccessSession
 } from "../server/services/advancedAccessService";
+import { canBypassAdvancedAccess } from "../src/components/AdvancedAccessContext";
 import fs from "fs-extra";
 import path from "path";
 import express from "express";
@@ -85,6 +86,36 @@ async function main() {
   clearEnv();
 
   try {
+    runTest("0. Unknown client config fails closed", () => {
+      const enabledConfig = {
+        enabled: true,
+        displayName: "Код",
+        ttlMinutes: 60,
+        protectedActions: ["exportData"]
+      };
+      const disabledConfig = {
+        ...enabledConfig,
+        enabled: false
+      };
+
+      assert(
+        canBypassAdvancedAccess(null, "exportData") === false,
+        "Unloaded config must not bypass protected client actions"
+      );
+      assert(
+        canBypassAdvancedAccess(enabledConfig, "exportData") === false,
+        "Configured protected actions must require verification"
+      );
+      assert(
+        canBypassAdvancedAccess(enabledConfig, "unprotectedAction") === true,
+        "Configured unprotected actions may proceed"
+      );
+      assert(
+        canBypassAdvancedAccess(disabledConfig, "exportData") === true,
+        "Explicitly disabled advanced access may proceed"
+      );
+    });
+
     // Test Case 1: Config loading with empty file
     runTest("1. Empty or missing config loads default settings", () => {
       if (fs.existsSync(CONFIG_PATH)) {
