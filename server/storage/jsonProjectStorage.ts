@@ -1,5 +1,6 @@
 import fs from "fs-extra";
 import path from "path";
+import crypto from "crypto";
 import { Project, ProjectAnalysisResult, SyncLog } from "../../src/types";
 import { ProjectStorage, ImportResult } from "./projectStorage";
 
@@ -12,6 +13,7 @@ const ANALYSIS_FILE = path.join(DATA_DIR, "analysis-results.json");
 
 export class JsonProjectStorage implements ProjectStorage {
   private initPromise: Promise<void>;
+  private mutationQueue: Promise<void> = Promise.resolve();
 
   constructor() {
     this.initPromise = this.ensureDataDir();
@@ -31,21 +33,28 @@ export class JsonProjectStorage implements ProjectStorage {
 
   private async safeReadJson<T>(filePath: string, defaultValue: T): Promise<T> {
     await this.initPromise;
+    const canResetSafely = filePath !== PROJECTS_FILE && filePath !== ANALYSIS_FILE;
     try {
       if (!(await fs.pathExists(filePath))) {
-        await fs.writeJson(filePath, defaultValue);
+        await this.safeWriteJson(filePath, defaultValue);
         return defaultValue;
       }
       const content = await fs.readFile(filePath, "utf8");
       if (!content.trim()) {
-        await fs.writeJson(filePath, defaultValue);
-        return defaultValue;
+        throw new Error("JSON file is empty");
       }
       return JSON.parse(content) as T;
     } catch (err) {
+      if (!canResetSafely) {
+        console.error(
+          `[Storage Error] Refusing to overwrite authoritative data in ${filePath} after a read failure.`,
+          err
+        );
+        throw err;
+      }
       console.error(`[Storage Warning] Error reading JSON from ${filePath}. Recovering with default.`, err);
       try {
-        await fs.writeJson(filePath, defaultValue);
+        await this.safeWriteJson(filePath, defaultValue);
       } catch (writeErr) {
         console.error(`[Storage Error] Failed to write default JSON back to ${filePath}`, writeErr);
         throw writeErr;
@@ -56,12 +65,28 @@ export class JsonProjectStorage implements ProjectStorage {
 
   private async safeWriteJson<T>(filePath: string, data: T): Promise<void> {
     await this.initPromise;
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
     try {
-      await fs.writeJson(filePath, data);
+      await fs.writeJson(tmpPath, data);
+      await fs.rename(tmpPath, filePath);
     } catch (err) {
       console.error(`[Storage Error] Failed to write JSON to ${filePath}`, err);
+      try {
+        if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath);
+      } catch (cleanupErr) {
+        console.error(`[Storage Warning] Failed to clean up temporary file ${tmpPath}`, cleanupErr);
+      }
       throw err;
     }
+  }
+
+  private enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutationQueue.then(operation, operation);
+    this.mutationQueue = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
   }
 
   async getAllProjects(): Promise<Project[]> {
@@ -74,6 +99,10 @@ export class JsonProjectStorage implements ProjectStorage {
   }
 
   async upsertProjects(projects: Project[], syncId: string, mode: string): Promise<ImportResult> {
+    return this.enqueueMutation(() => this.upsertProjectsUnlocked(projects, syncId, mode));
+  }
+
+  private async upsertProjectsUnlocked(projects: Project[], syncId: string, mode: string): Promise<ImportResult> {
     const existingProjects: Project[] = await this.getAllProjects();
     const existingProjectsMap = new Map<string, Project>();
     for (const p of existingProjects) {
@@ -85,15 +114,26 @@ export class JsonProjectStorage implements ProjectStorage {
     const errors: any[] = [];
 
     for (const project of projects) {
-      if (!project.projectId || !project.projectName) {
+      const projectId = String(project.projectId || "").trim();
+      if (!projectId || projectId === "N/A" || !project.projectName) {
         errors.push({
-          projectId: project.projectId,
-          message: "projectId and projectName are required"
+          projectId,
+          message: "A real projectId and projectName are required"
         });
         continue;
       }
-      incomingIds.add(project.projectId);
-      validIncomingProjects.push(project);
+      if (incomingIds.has(projectId)) {
+        errors.push({
+          projectId,
+          message: "Duplicate projectId in the incoming batch"
+        });
+        continue;
+      }
+      incomingIds.add(projectId);
+      validIncomingProjects.push({
+        ...project,
+        projectId
+      });
     }
 
     let created = 0;
@@ -105,6 +145,7 @@ export class JsonProjectStorage implements ProjectStorage {
     const targetSource: "sheets" | "bitrix24" = syncId.startsWith("sheets-sync") ? "sheets" : "bitrix24";
 
     if (mode === "full") {
+      const updatedProjectsMap = new Map<string, Project>();
       // Find deleted projects (existed in store with the same source, but not present in incoming list)
       for (const p of existingProjects) {
         const isSameSource = p.source === targetSource || (!p.source && targetSource === "sheets");
@@ -112,7 +153,7 @@ export class JsonProjectStorage implements ProjectStorage {
           deleted++;
         } else if (!isSameSource) {
           // Keep other source's project
-          updatedProjects.push(p);
+          updatedProjectsMap.set(p.projectId, p);
         }
       }
 
@@ -120,7 +161,7 @@ export class JsonProjectStorage implements ProjectStorage {
       for (const project of validIncomingProjects) {
         const existing = existingProjectsMap.get(project.projectId);
         if (existing) {
-          updatedProjects.push({
+          updatedProjectsMap.set(project.projectId, {
             ...existing,
             ...project,
             createdInAppAt: existing.createdInAppAt,
@@ -131,7 +172,7 @@ export class JsonProjectStorage implements ProjectStorage {
           });
           updated++;
         } else {
-          updatedProjects.push({
+          updatedProjectsMap.set(project.projectId, {
             ...project,
             createdInAppAt: now,
             updatedInAppAt: now,
@@ -141,8 +182,9 @@ export class JsonProjectStorage implements ProjectStorage {
           created++;
         }
       }
+      updatedProjects = Array.from(updatedProjectsMap.values());
     } else {
-      updatedProjects = [...existingProjects];
+      updatedProjects = Array.from(existingProjectsMap.values());
       for (const project of validIncomingProjects) {
         const index = updatedProjects.findIndex(p => p.projectId === project.projectId);
         if (index !== -1) {
@@ -209,6 +251,10 @@ export class JsonProjectStorage implements ProjectStorage {
   }
 
   async saveAnalysis(projectId: string, analysis: ProjectAnalysisResult): Promise<void> {
+    return this.enqueueMutation(() => this.saveAnalysisUnlocked(projectId, analysis));
+  }
+
+  private async saveAnalysisUnlocked(projectId: string, analysis: ProjectAnalysisResult): Promise<void> {
     const analyses = await this.safeReadJson<Record<string, ProjectAnalysisResult>>(ANALYSIS_FILE, {});
     analyses[projectId] = analysis;
     await this.safeWriteJson(ANALYSIS_FILE, analyses);

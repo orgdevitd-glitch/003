@@ -11,6 +11,13 @@ export interface AdvancedAccessConfig {
   protectedActions: string[];
 }
 
+export type AnalysisAssessmentDateMode = "today" | "custom" | "server_fallback";
+
+export interface AnalysisAssessmentDate {
+  assessmentDate: Date;
+  assessmentDateMode: AnalysisAssessmentDateMode;
+}
+
 const DEFAULT_ADVANCED_CONFIG: AdvancedAccessConfig = {
   enabled: true,
   displayName: "Код расширенного доступа",
@@ -158,4 +165,32 @@ export function revokeAdvancedAccessSession(req: express.Request, res: express.R
     "Set-Cookie",
     "advanced_access_session=; HttpOnly; SameSite=None; Secure; Path=/; Max-Age=0"
   );
+}
+
+export function resolveAnalysisAssessmentDate(
+  rawAssessmentDate: unknown,
+  rawAssessmentDateMode: unknown,
+  now: Date = new Date()
+): AnalysisAssessmentDate {
+  if (rawAssessmentDateMode === "today") {
+    return {
+      assessmentDate: new Date(now.getTime()),
+      assessmentDateMode: "today"
+    };
+  }
+
+  if (typeof rawAssessmentDate === "string") {
+    const parsed = new Date(rawAssessmentDate);
+    if (!isNaN(parsed.getTime())) {
+      return {
+        assessmentDate: parsed,
+        assessmentDateMode: "custom"
+      };
+    }
+  }
+
+  return {
+    assessmentDate: new Date(now.getTime()),
+    assessmentDateMode: "server_fallback"
+  };
 }

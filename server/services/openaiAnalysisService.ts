@@ -98,10 +98,27 @@ aiProposal должен описывать применение ИИ внутр�
   };
 }
 
-async function waitForRun(openai: OpenAI, threadId: string, runId: string) {
+export interface WaitForRunOptions {
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+}
+
+export async function waitForRun(
+  openai: OpenAI,
+  threadId: string,
+  runId: string,
+  options: WaitForRunOptions = {}
+) {
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const pollIntervalMs = options.pollIntervalMs ?? 800;
+  const deadline = Date.now() + timeoutMs;
   let run = await openai.beta.threads.runs.retrieve(runId, { thread_id: threadId });
   while (["queued", "in_progress", "cancelling"].includes(run.status)) {
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    if (Date.now() >= deadline) {
+      throw new Error(`OpenAI assistant run timed out after ${timeoutMs}ms`);
+    }
+    const remainingMs = deadline - Date.now();
+    await new Promise((resolve) => setTimeout(resolve, Math.min(pollIntervalMs, remainingMs)));
     run = await openai.beta.threads.runs.retrieve(runId, { thread_id: threadId });
   }
   if (run.status !== "completed") {
