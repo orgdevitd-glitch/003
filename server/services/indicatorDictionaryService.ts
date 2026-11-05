@@ -98,6 +98,20 @@ export async function loadIndicatorDictionary(): Promise<void> {
         skipEmptyLines: true,
       });
 
+      // Papa can return partially parsed rows alongside syntax errors. Accept
+      // omitted trailing optional columns, but never replace the healthy
+      // dictionary/cache with structurally malformed CSV.
+      const fatalParseErrors = results.errors.filter(
+        error => !(error.type === "FieldMismatch" && error.code === "TooFewFields")
+      );
+      if (fatalParseErrors.length > 0) {
+        const details = fatalParseErrors
+          .slice(0, 3)
+          .map(error => `${error.code}${typeof error.row === "number" ? ` at row ${error.row + 2}` : ""}`)
+          .join(", ");
+        throw new Error(`CSV parsing failed: ${details}`);
+      }
+
       const fields = results.meta.fields || [];
       const findHeader = (target: string): string | undefined => {
         const t = target.toLowerCase().replace(/\s+/g, "");
