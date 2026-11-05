@@ -169,6 +169,28 @@ async function runTests() {
     assert(statusF.itemsCount === 1, "Should preserve the healthy cache row count (1)");
     console.log("✓ Confirmed invalid CSV does not overwrite healthy cache");
 
+    // Papa returns usable-looking rows together with MissingQuotes errors.
+    // Such a response must not replace the last-known-good dictionary.
+    console.log("\n[Test Scenario F2] Malformed quoted CSV preserves healthy cache...");
+    const malformedQuotedCsv = `canonicalName,aliases,method,status,unit,comment
+Расходы,,lower_is_better,active,руб,"unterminated
+Оборот,,higher_is_better,active,руб,lost
+`;
+
+    global.fetch = async () => ({
+      status: 200,
+      headers: { get: () => "text/csv" },
+      text: async () => malformedQuotedCsv
+    } as any);
+
+    await loadIndicatorDictionary();
+    const statusF2 = getIndicatorDictionaryStatus();
+    assert(statusF2.source === "cache", "Malformed quoted CSV should fall back to cache");
+    assert(statusF2.itemsCount === 1, "Malformed quoted CSV must not truncate the healthy dictionary");
+    assert(!!resolveIndicatorDictionaryItem("Прибыль"), "Healthy cached KPI should remain active");
+    assert(resolveIndicatorDictionaryItem("Расходы") === null, "Partially parsed KPI must not become active");
+    console.log("✓ Confirmed malformed quoted CSV cannot replace healthy cache");
+
     // ==========================================
     // Сценарий G: Отчет по неизвестным KPI
     // ==========================================
