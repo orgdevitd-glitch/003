@@ -619,8 +619,9 @@ export function buildProjectAnalysisPayload(params: {
 
   let hasWeightInMilestones = false;
   milestonesData.forEach(md => {
-    if (md.quarter && quarterSummaryMap.has(md.quarter)) {
-      const current = quarterSummaryMap.get(md.quarter)!;
+    const normalizedQuarter = normalizePeriod(md.quarter);
+    if (quarterSummaryMap.has(normalizedQuarter)) {
+      const current = quarterSummaryMap.get(normalizedQuarter)!;
       if (md.weightPercent !== null) {
         current.plan += md.weightPercent;
         hasWeightInMilestones = true;

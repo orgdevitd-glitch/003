@@ -135,6 +135,23 @@ function runTests() {
     indicators: []
   };
 
+  const analysisPayload = buildProjectAnalysisPayload({
+    project: mockProject,
+    evaluation: mockEvaluation,
+    assessmentDate: mockEvaluation.assessmentDate,
+    assessmentDateMode: "custom"
+  });
+  const q1MilestoneSummary = analysisPayload.milestonesSnapshot.quarterSummary.find(
+    (summary) => summary.quarter === "Q1"
+  );
+  assert(
+    q1MilestoneSummary?.planWeightPercent === 100 &&
+      q1MilestoneSummary.factWeightPercent === 100 &&
+      q1MilestoneSummary.status === "ok",
+    `Expected evaluation-backed Q1 milestone summary to be 100/100 and ok, got ${JSON.stringify(q1MilestoneSummary)}`
+  );
+  console.log("✓ Evaluation-backed milestones contribute to the AI quarter summary");
+
   // Test 3. Test Indicator evaluations extraction
   const qKpiMetrics = getIndicatorPeriodCompletionMetricsFromEvaluation(mockEvaluation, 2026, 2);
   assert(qKpiMetrics.hasData && qKpiMetrics.fact === 95, `Expected Q2 2026 KPI progress fact 95 from evaluation, got: ${JSON.stringify(qKpiMetrics)}`);
