@@ -667,6 +667,7 @@ export function buildProjectAnalysisPayload(params: {
     cappedPerformancePercent: number | null;
     status: string | null;
     explanation: string | null;
+    isEvaluationResult: boolean;
   }>();
 
   // Helper helper to register/merge indicators
@@ -679,6 +680,7 @@ export function buildProjectAnalysisPayload(params: {
     cappedPerformancePercent: number | null;
     status: string | null;
     explanation: string | null;
+    isEvaluationResult: boolean;
   }) => {
     const normName = normalizeName(item.name);
     const normPeriod = normalizePeriod(item.period);
@@ -693,7 +695,8 @@ export function buildProjectAnalysisPayload(params: {
         performancePercent: item.performancePercent,
         cappedPerformancePercent: item.cappedPerformancePercent,
         status: item.status,
-        explanation: item.explanation
+        explanation: item.explanation,
+        isEvaluationResult: item.isEvaluationResult
       });
     } else {
       const existing = indicatorsMap.get(key)!;
@@ -715,6 +718,7 @@ export function buildProjectAnalysisPayload(params: {
       if (!existing.explanation && item.explanation) {
         existing.explanation = item.explanation;
       }
+      existing.isEvaluationResult ||= item.isEvaluationResult;
     }
   };
 
@@ -730,7 +734,8 @@ export function buildProjectAnalysisPayload(params: {
         performancePercent: ind.performancePercent,
         cappedPerformancePercent: ind.cappedPerformancePercent,
         status: ind.status,
-        explanation: ind.explanation
+        explanation: ind.explanation,
+        isEvaluationResult: true
       });
     });
   }
@@ -746,7 +751,8 @@ export function buildProjectAnalysisPayload(params: {
         performancePercent: null,
         cappedPerformancePercent: null,
         status: null,
-        explanation: ind.comment || null
+        explanation: ind.comment || null,
+        isEvaluationResult: false
       });
     });
   }
@@ -763,14 +769,15 @@ export function buildProjectAnalysisPayload(params: {
         performancePercent: typeof eff.performancePercent === "number" ? eff.performancePercent : null,
         cappedPerformancePercent: null,
         status: null,
-        explanation: null
+        explanation: null,
+        isEvaluationResult: false
       });
     });
   }
 
   const indicatorsList = Array.from(indicatorsMap.values()).map(item => {
     let performancePercent = item.performancePercent;
-    if (performancePercent === null) {
+    if (performancePercent === null && !item.isEvaluationResult) {
       const planNum = parseToNumber(item.plan);
       const factNum = parseToNumber(item.fact);
       if (planNum !== null && planNum !== 0 && factNum !== null) {
@@ -990,10 +997,9 @@ export function buildProjectAnalysisPayload(params: {
 
     const isLessThan100 = ind.performancePercent !== null && ind.performancePercent < 100;
     const factMissing = !hasFact;
-    const factIsZero = factNum === 0;
     const isNegativeDeviation = (ind.deviation !== null && ind.deviation < 0);
 
-    return isLessThan100 || factMissing || factIsZero || isNegativeDeviation;
+    return isLessThan100 || factMissing || isNegativeDeviation;
   }).map((ind) => {
     const factVal = ind.fact;
     const factNum = parseToNumber(factVal);
@@ -1247,9 +1253,7 @@ export function buildProjectAnalysisPayload(params: {
       const statusInfo = getPeriodStatus(ind.period, currentQuarter, periodStatusOptions);
 
       let isProblematic = (hasPlan && !hasFact) ||
-                            (hasPlan && factNum === 0 && planNum !== 0) ||
-                            (hasPlan && hasFact && factNum < planNum) ||
-                            (performancePercent !== null && performancePercent < 100);
+                          (performancePercent !== null && performancePercent < 100);
 
       if (statusInfo.isFutureAsOfAssessmentDate) {
         isProblematic = false;
@@ -1259,10 +1263,6 @@ export function buildProjectAnalysisPayload(params: {
       if (isProblematic) {
         if (!hasFact) {
           problemReason = "Факт отсутствует при наличии плана.";
-        } else if (factNum === 0 && planNum !== 0) {
-          problemReason = "Нулевой факт при наличии плана.";
-        } else if (hasPlan && hasFact && factNum < planNum) {
-          problemReason = "Уровень факта ниже запланированного значения.";
         } else if (performancePercent !== null && performancePercent < 100) {
           problemReason = `Целевой процент выполнения не достигнут (${performancePercent.toFixed(1)}%).`;
         }
