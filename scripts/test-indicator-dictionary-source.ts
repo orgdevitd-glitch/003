@@ -170,6 +170,42 @@ async function runTests() {
     console.log("✓ Confirmed invalid CSV does not overwrite healthy cache");
 
     // ==========================================
+    // Scenario F2: Cache write failure preserves the previous cache
+    // ==========================================
+    console.log("\n[Test Scenario F2] Interrupted cache write preserves the previous dictionary...");
+
+    global.fetch = async () => ({
+      status: 200,
+      headers: { get: () => "text/csv" },
+      text: async () => validCsv
+    } as any);
+
+    const originalWriteJson = fs.writeJson;
+    (fs as any).writeJson = async (filePath: string, data: unknown, options?: unknown) => {
+      if (filePath === CACHE_FILE || filePath.startsWith(`${CACHE_FILE}.`)) {
+        await fs.writeFile(filePath, '{"items":[');
+        throw new Error("Simulated interrupted cache write");
+      }
+      return originalWriteJson(filePath, data, options as any);
+    };
+
+    try {
+      await loadIndicatorDictionary();
+    } finally {
+      (fs as any).writeJson = originalWriteJson;
+    }
+
+    const statusF2 = getIndicatorDictionaryStatus();
+    assert(statusF2.source === "cache", `Should retain the previous cache after a write failure, got source: ${statusF2.source}`);
+    assert(statusF2.itemsCount === 1, `Should preserve the previous cache row count (1), got ${statusF2.itemsCount}`);
+    assert(!!resolveIndicatorDictionaryItem("Прибыль"), "Should preserve the previously cached KPI dictionary");
+    const temporaryCacheFiles = (await fs.readdir(TEST_DATA_DIR)).filter(
+      fileName => fileName.startsWith("indicator-dictionary.json.") && fileName.endsWith(".tmp")
+    );
+    assert(temporaryCacheFiles.length === 0, "Failed cache writes should clean up temporary files");
+    console.log("✓ Interrupted cache write left the previous dictionary intact");
+
+    // ==========================================
     // Сценарий G: Отчет по неизвестным KPI
     // ==========================================
     console.log("\n[Test Scenario G] Unknown KPI reporting...");
