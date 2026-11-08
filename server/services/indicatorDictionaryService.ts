@@ -1,4 +1,5 @@
 import fs from "fs-extra";
+import { promises as fsPromises } from "fs";
 import path from "path";
 import crypto from "crypto";
 import Papa from "papaparse";
@@ -50,6 +51,22 @@ export function getIndicatorDictionaryStatus(): DictionaryStatus {
 }
 
 let lastDictionaryLoadTime = 0;
+
+async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
+  await fs.ensureDir(path.dirname(filePath));
+  const tmpPath = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    await fs.writeJson(tmpPath, data);
+    await fsPromises.rename(tmpPath, filePath);
+  } catch (err) {
+    try {
+      if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath);
+    } catch {
+      // Ignore cleanup errors and preserve the original write failure.
+    }
+    throw err;
+  }
+}
 
 export async function loadIndicatorDictionaryWithTTL(ttlMs: number = 5 * 60 * 1000): Promise<void> {
   const now = Date.now();
@@ -201,8 +218,7 @@ export async function loadIndicatorDictionary(): Promise<void> {
       const sourceUrlHash = crypto.createHash("md5").update(normalizedUrl).digest("hex");
       const loadedAt = new Date().toISOString();
 
-      await fs.ensureDir(DATA_DIR);
-      await fs.writeJson(CACHE_FILE, {
+      await writeJsonAtomic(CACHE_FILE, {
         items,
         meta: {
           source: "google_sheets",
